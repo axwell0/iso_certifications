@@ -7,6 +7,19 @@ from sqlalchemy.orm import relationship
 from api.extensions import db
 from werkzeug.security import generate_password_hash, check_password_hash
 
+
+# ------------------- Enums -------------------
+class AuditStatusEnum(Enum):
+    SCHEDULED = "scheduled"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+
+
+class CertificationStatusEnum(Enum):
+    ISSUED = "issued"
+    REVOKED = "revoked"
+
+
 class RequestStatusEnum(Enum):
     PENDING = "pending"
     APPROVED = "approved"
@@ -17,6 +30,8 @@ class InvitationStatusEnum(Enum):
     PENDING = "pending"
     ACCEPTED = "accepted"
     DECLINED = "declined"
+
+
 class RoleEnum(Enum):
     ADMIN = 'admin'
     EMPLOYEE = 'employee'
@@ -24,36 +39,29 @@ class RoleEnum(Enum):
     GUEST = 'guest'
 
 
-class OrganizationCreationRequest(db.Model):
-    __tablename__ = 'organization_creation_requests'
-
-    id = db.Column(db.String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    guest_id = db.Column(db.String, db.ForeignKey('users.id'), nullable=False)
-    organization_name = db.Column(db.String(150), nullable=False)
-    description = db.Column(db.Text, nullable=True)
-    status = db.Column(db.Enum(RequestStatusEnum), default=RequestStatusEnum.PENDING, nullable=False)
-    admin_comment = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    guest = relationship('User')
+# ------------------- Models -------------------
 
 class User(db.Model):
     __tablename__ = 'users'
 
-    id = db.Column(db.String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.Text, nullable=False)
     full_name = db.Column(db.String(100), nullable=False)
     role = db.Column(db.Enum(RoleEnum), default=RoleEnum.EMPLOYEE, nullable=False)
-    organization_id = db.Column(db.String, db.ForeignKey('organizations.id'), nullable=True)
-    certification_body_id = db.Column(db.String, db.ForeignKey('certification_bodies.id'), nullable=True)
+    organization_id = db.Column(db.String(36), db.ForeignKey('organizations.id'), nullable=True)
+    certification_body_id = db.Column(db.String(36), db.ForeignKey('certification_bodies.id'), nullable=True)
     is_confirmed = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # Relationships
     organization = relationship('Organization', back_populates='users')
     certification_body = relationship('CertificationBody', back_populates='users')
+    # Manages the audits
+    audits_managed = relationship('Audit', back_populates='manager')
+    # User who issues certifications
+    certifications_issued = relationship('Certification', back_populates='issuer')
 
     def set_password(self, password):
         """Hashes and sets the user's password."""
@@ -63,10 +71,30 @@ class User(db.Model):
         """Checks if the provided password matches the stored hash."""
         return check_password_hash(self.password_hash, password)
 
+
 class Organization(db.Model):
     __tablename__ = 'organizations'
 
-    id = db.Column(db.String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = db.Column(db.String(150), unique=True, nullable=False)
+    address = db.Column(db.String(255), nullable=False)
+    contact_email = db.Column(db.String(120), nullable=False)
+    contact_phone = db.Column(db.String(20), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    users = relationship('User', back_populates='organization', cascade='all, delete-orphan')
+    certifications = relationship('Certification', back_populates='organization', cascade='all, delete-orphan')
+    # documents = relationship('Document', back_populates='organization', cascade='all, delete-orphan')  # If you have a Document model
+    invitations = relationship('Invitation', back_populates='organization', cascade='all, delete-orphan')
+    audits = relationship('Audit', back_populates='organization', cascade='all, delete-orphan')
+
+
+class CertificationBody(db.Model):
+    __tablename__ = 'certification_bodies'
+
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = db.Column(db.String(150), unique=True, nullable=False)
     address = db.Column(db.String(255), nullable=False)
     contact_email = db.Column(db.String(120), nullable=False)
@@ -74,125 +102,140 @@ class Organization(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    users = relationship('User', back_populates='organization', cascade='all, delete-orphan')
-    certifications = relationship('Certification', back_populates='organization', cascade='all, delete-orphan')
-    documents = relationship('Document', back_populates='organization', cascade='all, delete-orphan')
-    invitations = relationship('Invitation', back_populates='organization', cascade='all, delete-orphan')
-
-class CertificationBody(db.Model):
-    __tablename__ = 'certification_bodies'
-
-    id = db.Column(db.String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    name = db.Column(db.String(150), unique=True, nullable=False)
-    accreditation_number = db.Column(db.String(100), unique=True, nullable=False)
-    contact_email = db.Column(db.String(120), nullable=False)
-    contact_phone = db.Column(db.String(20), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
+    # Relationships
     users = relationship('User', back_populates='certification_body', cascade='all, delete-orphan')
     audits = relationship('Audit', back_populates='certification_body', cascade='all, delete-orphan')
     invitations = relationship('Invitation', back_populates='certification_body', cascade='all, delete-orphan')
+    # If you want to track all certifications via the certification body:
+    # certifications = relationship('Certification', back_populates='certification_body', cascade='all, delete-orphan')
+
 
 class Certification(db.Model):
     __tablename__ = 'certifications'
 
-    id = db.Column(db.String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    iso_standard = db.Column(db.String(50), nullable=False)
-    status = db.Column(db.String(50), nullable=False, default='Pending')
-    issue_date = db.Column(db.Date, nullable=True)
-    expiry_date = db.Column(db.Date, nullable=True)
-    organization_id = db.Column(db.String, db.ForeignKey('organizations.id'), nullable=False)
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    audit_id = db.Column(db.String(36), db.ForeignKey('audits.id'), nullable=False)
+    organization_id = db.Column(db.String(36), db.ForeignKey('organizations.id'), nullable=False)
+    certification_body_id = db.Column(db.String(36), db.ForeignKey('certification_bodies.id'), nullable=False)
+    issued_date = db.Column(db.Date, nullable=False)
+    status = db.Column(db.Enum(CertificationStatusEnum), nullable=False, default=CertificationStatusEnum.ISSUED)
+    certificate_pdf = db.Column(db.String, nullable=False)  # Path or URL to the PDF
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    issuer_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)
+
+    # Relationships
+    issuer = relationship('User', back_populates='certifications_issued')
     organization = relationship('Organization', back_populates='certifications')
-    audits = relationship('Audit', back_populates='certification', cascade='all, delete-orphan')
+    # certification_body = relationship('CertificationBody', back_populates='certifications')  # if desired
+    audit = relationship('Audit')  # or add back_populates if it's one-to-one, e.g. back_populates='certification'
+
+    def __repr__(self):
+        return f"<Certification {self.id} for Audit {self.audit_id}>"
+
 
 class Audit(db.Model):
     __tablename__ = 'audits'
 
-    id = db.Column(db.String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    audit_date = db.Column(db.Date, nullable=False)
-    findings = db.Column(db.Text, nullable=True)
-    certification_id = db.Column(db.String, db.ForeignKey('certifications.id'), nullable=False)
-    certification_body_id = db.Column(db.String, db.ForeignKey('certification_bodies.id'), nullable=False)
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = db.Column(db.String(255), nullable=False)
+    organization_id = db.Column(db.String(36), db.ForeignKey('organizations.id'), nullable=False)
+    certification_body_id = db.Column(db.String(36), db.ForeignKey('certification_bodies.id'), nullable=False)
+    scheduled_date = db.Column(db.Date, nullable=False)
+    status = db.Column(db.Enum(AuditStatusEnum), nullable=False, default=AuditStatusEnum.SCHEDULED)
+    checklist = db.Column(db.String, nullable=False)  # JSON string or other serialized data
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    certification = relationship('Certification', back_populates='audits')
+    manager_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)
+
+    # Relationships
+    manager = relationship('User', back_populates='audits_managed')
+    organization = relationship('Organization', back_populates='audits')
     certification_body = relationship('CertificationBody', back_populates='audits')
-    reports = relationship('AuditReport', back_populates='audit', cascade='all, delete-orphan')
+    reports = relationship('AuditReport', back_populates='audit')
 
-class Document(db.Model):
-    __tablename__ = 'documents'
+    def __repr__(self):
+        return f"<Audit {self.name}>"
 
-    id = db.Column(db.String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    filename = db.Column(db.String(255), nullable=False)
-    filepath = db.Column(db.String(255), nullable=False)
-    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
-    uploaded_by = db.Column(db.String, db.ForeignKey('users.id'), nullable=False)
-    organization_id = db.Column(db.String, db.ForeignKey('organizations.id'), nullable=False)
-
-    uploader = relationship('User')
-    organization = relationship('Organization', back_populates='documents')
 
 class AuditReport(db.Model):
     __tablename__ = 'audit_reports'
 
-    id = db.Column(db.String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    audit_id = db.Column(db.String, db.ForeignKey('audits.id'), nullable=False)
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    audit_id = db.Column(db.String(36), db.ForeignKey('audits.id'), nullable=False)
     report_file = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    # Relationships
     audit = relationship('Audit', back_populates='reports')
 
-class Notification(db.Model):
-    __tablename__ = 'notifications'
 
-    id = db.Column(db.String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = db.Column(db.String, db.ForeignKey('users.id'), nullable=False)
-    message = db.Column(db.Text, nullable=False)
-    is_read = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    user = relationship('User')
-
-class Feedback(db.Model):
-    __tablename__ = 'feedbacks'
-
-    id = db.Column(db.String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = db.Column(db.String, db.ForeignKey('users.id'), nullable=False)
-    organization_id = db.Column(db.String, db.ForeignKey('organizations.id'), nullable=True)
-    content = db.Column(db.Text, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    user = relationship('User')
-    organization = relationship('Organization')
-
-# RevokedToken Model
 class RevokedToken(db.Model):
     __tablename__ = 'revoked_tokens'
 
-    id = db.Column(db.String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     jti = db.Column(db.String, unique=True, nullable=False)
     revoked_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-# Invitation Model
+
 class Invitation(db.Model):
     __tablename__ = 'invitations'
 
-    id = db.Column(db.String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     email = db.Column(db.String(120), nullable=False)
     role = db.Column(db.Enum(RoleEnum), nullable=False)
-    organization_id = db.Column(db.String, db.ForeignKey('organizations.id'), nullable=True)
-    certification_body_id = db.Column(db.String, db.ForeignKey('certification_bodies.id'), nullable=True)
-    token = db.Column(db.String(255), unique=True, nullable=False)
+    organization_id = db.Column(db.String(36), db.ForeignKey('organizations.id'), nullable=True)
+    certification_body_id = db.Column(db.String(36), db.ForeignKey('certification_bodies.id'), nullable=True)
+    token = db.Column(db.String, unique=True, nullable=True)
     expires_at = db.Column(db.DateTime, nullable=False)
     is_used = db.Column(db.Boolean, default=False)
     status = db.Column(db.Enum(InvitationStatusEnum), default=InvitationStatusEnum.PENDING, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     responded_at = db.Column(db.DateTime, nullable=True)
 
+    # Relationships
     organization = relationship('Organization', back_populates='invitations')
     certification_body = relationship('CertificationBody', back_populates='invitations')
+
+
+class OrganizationCreationRequest(db.Model):
+    __tablename__ = 'organization_creation_requests'
+
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    guest_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)
+    organization_name = db.Column(db.String(150), nullable=False)
+    address = db.Column(db.String(255), nullable=False)
+    contact_email = db.Column(db.String(120), nullable=False)
+    contact_phone = db.Column(db.String(20), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    status = db.Column(db.Enum(RequestStatusEnum), default=RequestStatusEnum.PENDING, nullable=False)
+    admin_comment = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    guest = relationship('User')
+
+
+class CertificationBodyCreationRequest(db.Model):
+    __tablename__ = 'certification_body_creation_requests'
+
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    guest_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)
+    certification_body_name = db.Column(db.String(120), nullable=False, unique=True)
+    description = db.Column(db.Text, nullable=True)
+    address = db.Column(db.String(255), nullable=False)
+    contact_phone = db.Column(db.String(20), nullable=False)
+    contact_email = db.Column(db.String(120), nullable=False)
+    status = db.Column(db.Enum(RequestStatusEnum), nullable=False, default=RequestStatusEnum.PENDING)
+    admin_comment = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    guest = relationship('User')
+
+    def __repr__(self):
+        return f"<CertificationBodyCreationRequest {self.certification_body_name} by Guest {self.guest_id}>"

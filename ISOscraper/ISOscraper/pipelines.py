@@ -9,7 +9,7 @@ import os
 
 import pymongo
 import scrapy
-# useful for handling different item types with a single interface
+
 from itemadapter import ItemAdapter
 
 

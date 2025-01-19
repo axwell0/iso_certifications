@@ -34,6 +34,7 @@ class Config:
     # JWT Configuration for token revocation
     JWT_BLACKLIST_ENABLED = True
     JWT_BLACKLIST_TOKEN_CHECKS = ['access', 'refresh']
+    MONGO_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/iso_standards')
 
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=24)
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=7)

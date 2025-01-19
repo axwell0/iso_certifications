@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 
 from flask import url_for
@@ -6,12 +7,14 @@ from flask_jwt_extended import create_access_token, create_refresh_token, jwt_re
 from flask_mail import Message
 from flask_smorest import Blueprint
 from itsdangerous import SignatureExpired, BadSignature
+from sqlalchemy.exc import SQLAlchemyError
 
-from api.models.models import User, RoleEnum, Invitation, RevokedToken
-from api.schemas.schemas import UserRegistrationSchema, UserLoginSchema, UserSchema, PasswordResetRequestSchema, \
-    PasswordResetSchema, MessageSchema
+from api.models.models import User, RoleEnum, Invitation, RevokedToken, InvitationStatusEnum, Organization
+from api.schemas.schemas import UserRegistrationSchema, UserLoginSchema, PasswordResetRequestSchema, \
+    PasswordResetSchema, MessageSchema, RegisterInvitationSchema
 from ..extensions import db, mail
-from ..utils import generate_confirmation_token, confirm_token, generate_reset_token, confirm_reset_token
+from api.utils.utils import generate_confirmation_token, confirm_token, generate_reset_token, confirm_reset_token, \
+    verify_invitation_token
 
 auth_bp = Blueprint('Auth', 'auth', url_prefix='/auth', description='Authentication services')
 
@@ -48,62 +51,121 @@ class UserRegister(MethodView):
             db.session.add(user)
             db.session.commit()
 
-            # Send confirmation email
             token = generate_confirmation_token(user.email)
             confirm_url = url_for('Auth.ConfirmEmail', token=token, _external=True)
             msg = Message('Confirm Your Email', recipients=[email])
             msg.body = f'Please click the link to confirm your email: <a href="{confirm_url}"> cock </a>'
             mail.send(msg)
 
-            return {"message": "Guest registered successfully. Please confirm your email."}, 201
+            return {"message": "Guest registered successfully. Please confirm your email.", "obj":user}, 201
 
 
-@auth_bp.route('/register-invitation')
+
+@auth_bp.route('/register_invitation')
 class RegisterInvitation(MethodView):
-    @auth_bp.arguments(UserRegistrationSchema)
-    @auth_bp.response(201, UserSchema)
+    @auth_bp.arguments(RegisterInvitationSchema)
+    @auth_bp.response(201, MessageSchema)
     def post(self, registration_data):
-        """Register a user via an invitation token"""
-        email = registration_data['email']
+        """
+        Register a new user via invitation token.
+        """
+        token = registration_data['token']
         password = registration_data['password']
         full_name = registration_data['full_name']
-        invitation_token = registration_data.get('invitation_token')
 
-        if not invitation_token:
-            return {"message": "Invitation token is required for this registration."}, 400
+        try:
+            # Decode and verify the token (max_age matches invitation expiry)
+            token_payload = verify_invitation_token(token, max_age=7*24*3600)
+            invitation_id = token_payload.get('invitation_id')
+            token_role_str = token_payload.get('role')
+        except SignatureExpired:
+            return {"message": "Invitation token has expired."}, 400
+        except BadSignature:
+            return {"message": "Invalid invitation token."}, 400
 
-        invitation = Invitation.query.filter_by(token=invitation_token, is_used=False).first()
+        invitation = Invitation.query.filter_by(id=invitation_id, token=token, status=InvitationStatusEnum.PENDING).first()
         if not invitation:
-            return {"message": "Invalid or already used invitation token."}, 400
+            return {"message": "Invalid or already responded invitation token."}, 400
+
         if invitation.expires_at < datetime.utcnow():
             return {"message": "Invitation token has expired."}, 400
-        if invitation.email != email:
-            return {"message": "Invitation token does not match the provided email."}, 400
 
-        if User.query.filter_by(email=email).first():
-            return {"message": "User with this email already exists."}, 400
+        # Check if the email already exists
+        existing_user = User.query.filter_by(email=invitation.email).first()
+        if existing_user:
+            return {"message": "A user with this email already exists."}, 400
 
-        user = User(
-            email=email,
+        # Ensure the role in the token matches the invitation's role
+        if token_role_str != invitation.role.value:
+            return {"message": "Invitation role mismatch."}, 400
+
+        # Create a new user
+        new_user = User(
+            id=str(uuid.uuid4()),
+            email=invitation.email,
             full_name=full_name,
             role=invitation.role,
             organization_id=invitation.organization_id,
             certification_body_id=invitation.certification_body_id,
-            is_confirmed=False
+            is_confirmed=True,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
         )
-        user.set_password(password)
-        db.session.add(user)
+        new_user.set_password(password)
+
+        # Update invitation status
+        invitation.status = InvitationStatusEnum.ACCEPTED
         invitation.is_used = True
-        db.session.commit()
+        invitation.responded_at = datetime.utcnow()
 
-        # Send confirmation email
-        token = generate_confirmation_token(user.email)
-        confirm_url = url_for('Auth.ConfirmEmail', token=token, _external=True)
-        msg = Message('Confirm Your Email', recipients=[email])
-        msg.body = f'Please click the link to confirm your email: {confirm_url}'
-        mail.send(msg)
+        try:
+            db.session.add(new_user)
+            db.session.commit()
+        except SQLAlchemyError:
+            db.session.rollback()
+            return {"message": "An error occurred during registration."}, 500
 
-        return {"message": "User registered successfully. Please confirm your email."}, 201
+        # Generate JWT tokens
+        access_token = create_access_token(identity=new_user.id, additional_claims={
+            "email": new_user.email,
+            "role": new_user.role.value
+        })
+        refresh_token = create_refresh_token(identity=new_user.id)
+
+        # Send welcome email
+        organization = Organization.query.get(invitation.organization_id) if invitation.organization_id else None
+        org_name = organization.name if organization else "Your Company"
+
+        confirmation_subject = f'Welcome to {org_name}'
+        confirmation_body = f'''
+        Hello {new_user.full_name},
+
+        Welcome to {org_name}!
+        You have been successfully registered as an {new_user.role.value}.
+
+        You can now log in to your account using the following credentials:
+        Email: {new_user.email}
+        Password: [Your Password]  # It's recommended to have users set their password securely.
+
+        Best regards,
+        {org_name}
+        '''
+
+        msg = Message(
+            subject=confirmation_subject,
+            recipients=[new_user.email],
+            body=confirmation_body
+        )
+        try:
+            mail.send(msg)
+        except Exception:
+            return {"message": "Failed to send welcome email."}, 500
+
+        return {
+            "message": "Registration successful.",
+            "access_token": access_token,
+            "refresh_token": refresh_token
+        }, 201
 
 
 @auth_bp.route('/confirm/<token>')
@@ -187,7 +249,7 @@ class PasswordReset(MethodView):
         db.session.commit()
         return {"message": "Password has been reset successfully."}, 200
 
-# Logout Endpoint
+
 @auth_bp.route('/logout')
 class UserLogout(MethodView):
     @jwt_required()
