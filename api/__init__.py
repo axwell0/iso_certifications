@@ -8,6 +8,7 @@ from .blueprints.audit import audit_bp
 from .blueprints.certification import certification_bp
 from .blueprints.standards import standards_bp
 from .config import Config
+from .errors import register_error_handlers
 from .extensions import db, migrate, mail, blp
 from .jwt_utils import setup_jwt_callbacks
 from .models.models import RevokedToken
@@ -23,7 +24,7 @@ def create_app():
     jwt = JWTManager(app)
     db.init_app(app)
     migrate.init_app(app, db)
-
+    register_error_handlers(app)
     mail.init_app(app)
     blp.init_app(app)
     setup_jwt_callbacks(jwt)

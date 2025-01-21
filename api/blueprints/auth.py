@@ -1,265 +1,392 @@
 import uuid
 from datetime import datetime
+from typing import Dict, Tuple, Any
 
 from flask import url_for
 from flask.views import MethodView
-from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt
+from flask_jwt_extended import (
+    create_access_token,
+    create_refresh_token,
+    jwt_required,
+    get_jwt
+)
 from flask_mail import Message
 from flask_smorest import Blueprint
 from itsdangerous import SignatureExpired, BadSignature
 from sqlalchemy.exc import SQLAlchemyError
 
-from api.models.models import User, RoleEnum, Invitation, RevokedToken, InvitationStatusEnum, Organization
-from api.schemas.schemas import UserRegistrationSchema, UserLoginSchema, PasswordResetRequestSchema, \
-    PasswordResetSchema, MessageSchema, RegisterInvitationSchema
+from api.errors import (
+    BadRequestError,
+    ConflictError,
+    ForbiddenError,
+    InternalServerError,
+    NotFoundError, UnauthorizedError
+)
+from api.models.models import (
+    User,
+    RoleEnum,
+    Invitation,
+    RevokedToken,
+    InvitationStatusEnum,
+    Organization
+)
+from api.schemas.schemas import (
+    UserRegistrationSchema,
+    UserLoginSchema,
+    PasswordResetRequestSchema,
+    PasswordResetSchema,
+    MessageSchema
+)
 from ..extensions import db, mail
-from api.utils.utils import generate_confirmation_token, confirm_token, generate_reset_token, confirm_reset_token, \
+from api.utils.utils import (
+    generate_confirmation_token,
+    confirm_token,
+    generate_reset_token,
+    confirm_reset_token,
     verify_invitation_token
+)
+from ..utils.email_utils import send_account_confirmation_email, send_password_reset_email
 
-auth_bp = Blueprint('Auth', 'auth', url_prefix='/auth', description='Authentication services')
+auth_bp = Blueprint("Auth", "auth", url_prefix="/auth", description="Authentication services")
 
 
-@auth_bp.route('/register')
+@auth_bp.route("/register")
 class UserRegister(MethodView):
+    """Endpoint for new user registration with dual registration workflows.
+
+    Supports two registration scenarios:
+    1. Invitation-based registration using valid invitation tokens for organization members
+    2. Self-registration for Guest users requiring email confirmation
+
+    Methods:
+        POST: Create new user account with provided credentials and optional invitation token
+    """
+
     @auth_bp.arguments(UserRegistrationSchema)
     @auth_bp.response(201, MessageSchema)
-    def post(self, user_data):
-        """
-        Register a new user.
-        - Guests can self-register without an invitation.
-        - Employees and Managers must register via an invitation token.
-        """
-        email = user_data['email']
-        password = user_data['password']
-        full_name = user_data['full_name']
-        invitation_token = user_data.get('invitation_token')
+    def post(self, user_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Register new user account.
 
+            Args:
+                user_data: User registration data containing:
+                    - email: Unique email address for the account
+                    - password: Account password
+                    - full_name: User's full name
+                    - invitation_token: Optional token for organization invitations
+
+            Returns:
+                Dictionary with operation status message and tokens (if invitation-based)
+
+            Raises:
+                ConflictError: If email already exists in system
+                BadRequestError: For invalid/expired invitation tokens or role mismatches
+                InternalServerError: For database or email service failures
+            """
+
+        email = user_data.get("email")
+        password = user_data["password"]
+        full_name = user_data["full_name"]
+        invitation_token = user_data.get("token")
+        print('invitation ya zebi',invitation_token)
+
+        existing_user = User.query.filter_by(email=email).first()
+        if existing_user:
+            raise ConflictError(f"User with email '{email}' already exists.")
         if invitation_token:
-            return RegisterInvitation().post(user_data)
-        else:
-            role = RoleEnum.GUEST
-            if User.query.filter_by(email=email).first():
-                return {"message": "User already exists."}, 400
+            try:
+                invitation_id = verify_invitation_token(invitation_token, max_age=604800)
+            except SignatureExpired:
+                raise BadRequestError("Invitation token has expired.")
+            except BadSignature:
+                raise BadRequestError("Invalid invitation token.")
 
-            user = User(
-                email=email,
+
+            invitation = Invitation.query.filter_by(
+                id=invitation_id,
+                token=invitation_token,
+                status=InvitationStatusEnum.PENDING
+            ).first()
+
+            if not invitation:
+                raise BadRequestError("Invalid or already responded invitation token.")
+            if invitation.expires_at < datetime.utcnow():
+                raise BadRequestError("Invitation token has expired.")
+
+            new_user = User(
+                id=str(uuid.uuid4()),
+                email=invitation.email,
                 full_name=full_name,
-                role=role,
-                is_confirmed=False
+                role=invitation.role,
+                organization_id=invitation.organization_id,
+                certification_body_id=invitation.certification_body_id,
+                is_confirmed=True,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
             )
-            user.set_password(password)
+            new_user.set_password(password)
+
+            invitation.status = InvitationStatusEnum.ACCEPTED
+            invitation.is_used = True
+            invitation.responded_at = datetime.utcnow()
+
+            try:
+                db.session.add(new_user)
+                db.session.commit()
+            except SQLAlchemyError as exc:
+                db.session.rollback()
+                raise InternalServerError(f"Database error during registration: {str(exc)}")
+
+            access_token = create_access_token(
+                identity=new_user.id,
+                additional_claims={"email": new_user.email, "role": new_user.role.value}
+            )
+            refresh_token = create_refresh_token(identity=new_user.id)
+
+            organization = Organization.query.get(invitation.organization_id) if invitation.organization_id else None
+            org_name = organization.name if organization else "Your Organization"
+
+            msg = Message(
+                subject=f"Welcome to {org_name}",
+                recipients=[new_user.email],
+                body=(
+                    f"Hello {new_user.full_name},\n\n"
+                    f"Welcome to {org_name}!\n"
+                    f"You have been successfully registered as {new_user.role.value}.\n\n"
+                    f"Email: {new_user.email}\n"
+                    "Password: [Your chosen password]\n\n"
+                    f"Best regards,\n"
+                    f"{org_name}"
+                )
+            )
+            try:
+                mail.send(msg)
+            except Exception as exc:
+                return {
+                    "message": (
+                        "Registration successful, but sending the welcome email failed."
+                    ),
+                    "access_token": access_token,
+                    "refresh_token": refresh_token
+                }
+
+            return {
+                "message": "Registration successful.",
+                "access_token": access_token,
+                "refresh_token": refresh_token
+            }
+
+        user = User(
+            email=email,
+            full_name=full_name,
+            role=RoleEnum.GUEST,
+            is_confirmed=False
+        )
+        user.set_password(password)
+
+        try:
             db.session.add(user)
             db.session.commit()
-
-            token = generate_confirmation_token(user.email)
-            confirm_url = url_for('Auth.ConfirmEmail', token=token, _external=True)
-            msg = Message('Confirm Your Email', recipients=[email])
-            msg.body = f'Please click the link to confirm your email: <a href="{confirm_url}"> cock </a>'
-            mail.send(msg)
-
-            return {"message": "Guest registered successfully. Please confirm your email.", "obj":user}, 201
-
-
-
-@auth_bp.route('/register_invitation')
-class RegisterInvitation(MethodView):
-    @auth_bp.arguments(RegisterInvitationSchema)
-    @auth_bp.response(201, MessageSchema)
-    def post(self, registration_data):
-        """
-        Register a new user via invitation token.
-        """
-        token = registration_data['token']
-        password = registration_data['password']
-        full_name = registration_data['full_name']
-
-        try:
-            # Decode and verify the token (max_age matches invitation expiry)
-            token_payload = verify_invitation_token(token, max_age=7*24*3600)
-            invitation_id = token_payload.get('invitation_id')
-            token_role_str = token_payload.get('role')
-        except SignatureExpired:
-            return {"message": "Invitation token has expired."}, 400
-        except BadSignature:
-            return {"message": "Invalid invitation token."}, 400
-
-        invitation = Invitation.query.filter_by(id=invitation_id, token=token, status=InvitationStatusEnum.PENDING).first()
-        if not invitation:
-            return {"message": "Invalid or already responded invitation token."}, 400
-
-        if invitation.expires_at < datetime.utcnow():
-            return {"message": "Invitation token has expired."}, 400
-
-        # Check if the email already exists
-        existing_user = User.query.filter_by(email=invitation.email).first()
-        if existing_user:
-            return {"message": "A user with this email already exists."}, 400
-
-        # Ensure the role in the token matches the invitation's role
-        if token_role_str != invitation.role.value:
-            return {"message": "Invitation role mismatch."}, 400
-
-        # Create a new user
-        new_user = User(
-            id=str(uuid.uuid4()),
-            email=invitation.email,
-            full_name=full_name,
-            role=invitation.role,
-            organization_id=invitation.organization_id,
-            certification_body_id=invitation.certification_body_id,
-            is_confirmed=True,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
-        )
-        new_user.set_password(password)
-
-        # Update invitation status
-        invitation.status = InvitationStatusEnum.ACCEPTED
-        invitation.is_used = True
-        invitation.responded_at = datetime.utcnow()
-
-        try:
-            db.session.add(new_user)
-            db.session.commit()
-        except SQLAlchemyError:
+        except SQLAlchemyError as exc:
             db.session.rollback()
-            return {"message": "An error occurred during registration."}, 500
+            raise InternalServerError(f"Database error during registration: {str(exc)}")
 
-        # Generate JWT tokens
-        access_token = create_access_token(identity=new_user.id, additional_claims={
-            "email": new_user.email,
-            "role": new_user.role.value
-        })
-        refresh_token = create_refresh_token(identity=new_user.id)
+        token = generate_confirmation_token(user.email)
+        confirmation_url = url_for("Auth.ConfirmEmail", token=token, _external=True)
 
-        # Send welcome email
-        organization = Organization.query.get(invitation.organization_id) if invitation.organization_id else None
-        org_name = organization.name if organization else "Your Company"
-
-        confirmation_subject = f'Welcome to {org_name}'
-        confirmation_body = f'''
-        Hello {new_user.full_name},
-
-        Welcome to {org_name}!
-        You have been successfully registered as an {new_user.role.value}.
-
-        You can now log in to your account using the following credentials:
-        Email: {new_user.email}
-        Password: [Your Password]  # It's recommended to have users set their password securely.
-
-        Best regards,
-        {org_name}
-        '''
-
-        msg = Message(
-            subject=confirmation_subject,
-            recipients=[new_user.email],
-            body=confirmation_body
-        )
         try:
-            mail.send(msg)
-        except Exception:
-            return {"message": "Failed to send welcome email."}, 500
+            send_account_confirmation_email(user, confirmation_url)
+        except Exception as exc:
+            return {
+                "message": (
+                    "Guest registered successfully, but the confirmation email could "
+                    f"not be sent: {str(exc)}"
+                )
+            }
 
-        return {
-            "message": "Registration successful.",
-            "access_token": access_token,
-            "refresh_token": refresh_token
-        }, 201
+        return {"message": "Guest registered successfully. Please confirm your email."}
 
 
-@auth_bp.route('/confirm/<token>')
+@auth_bp.route("/confirm/<token>")
 class ConfirmEmail(MethodView):
-    def get(self, token):
-        """Confirm user's email address"""
+    """Endpoint for email address confirmation through validation tokens.
+
+    Methods:
+        GET: Validate confirmation token and activate user account
+    """
+    def get(self, token: str) -> Dict[str, Any]:
+        """Confirm user email address using validation token.
+        Args:
+            token: Email confirmation JWT token sent to user's email
+
+        Returns:
+            Success message or notification if already confirmed
+
+        Raises:
+            BadRequestError: For expired or invalid confirmation tokens
+            NotFoundError: If no user exists for the email in the token
+        """
         try:
             email = confirm_token(token)
         except SignatureExpired:
-            return {"message": "The confirmation link has expired."}, 400
+            raise BadRequestError("The confirmation link has expired.")
         except BadSignature:
-            return {"message": "Invalid confirmation token."}, 400
+            raise BadRequestError("Invalid confirmation token.")
 
-        user = User.query.filter_by(email=email).first_or_404(description="User not found.")
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            raise NotFoundError("User not found.")
+
         if user.is_confirmed:
-            return {"message": "Account already confirmed."}, 200
+            return {"message": "Account already confirmed."}
         user.is_confirmed = True
         db.session.commit()
-        return {"message": "Email confirmed successfully."}, 200
+        return {"message": "Email confirmed successfully."}
 
 
-@auth_bp.route('/login')
+@auth_bp.route("/login")
 class UserLogin(MethodView):
-    @auth_bp.arguments(UserLoginSchema)
-    def post(self, login_data):
-        """User login"""
-        email = login_data['email']
-        password = login_data['password']
-        user = User.query.filter_by(email=email).first()
-        if not user or not user.check_password(password):
-            return {"message": "Invalid credentials."}, 401
-        if not user.is_confirmed:
-            return {"message": "Email not confirmed."}, 403
+    """Endpoint for user authentication and JWT token generation.
 
-        access_token = create_access_token(identity=user.id, additional_claims={
-            "email": user.email,
-            "role": user.role.value
-        })
+      Methods:
+          POST: Authenticate user credentials and return access/refresh tokens
+      """
+    @auth_bp.arguments(UserLoginSchema)
+    def post(self, login_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Authenticate user and generate JWT tokens.
+
+        Args:
+            login_data: Authentication credentials containing:
+                - email: Registered user email
+                - password: Account password
+
+        Returns:
+            Dictionary containing access and refresh JWT tokens
+
+        Raises:
+            UnauthorizedError: For invalid credentials
+            ForbiddenError: If email confirmation is pending
+        """
+        email = login_data["email"]
+        password = login_data["password"]
+        user = User.query.filter_by(email=email).first()
+
+        if not user or not user.check_password(password):
+            raise UnauthorizedError("Invalid credentials.")
+        if not user.is_confirmed:
+            raise ForbiddenError("Email not confirmed.")
+
+        access_token = create_access_token(
+            identity=user.id,
+            additional_claims={"email": user.email, "role": user.role.value}
+        )
         refresh_token = create_refresh_token(identity=user.id)
         return {
             "access_token": access_token,
             "refresh_token": refresh_token
-        }, 200
+        }
 
 
-@auth_bp.route('/password-reset-request')
+@auth_bp.route("/password-reset-request")
 class PasswordResetRequest(MethodView):
+    """Endpoint for initiating password reset workflow.
+
+    Methods:
+        POST: Generate and send password reset token to registered email
+    """
     @auth_bp.arguments(PasswordResetRequestSchema)
-    def post(self, data):
-        """Request a password reset"""
-        email = data['email']
+    def post(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Initiate password reset process by email.
+
+        Args:
+            data: Contains email address for password reset
+
+        Returns:
+            Status message regardless of email existence (security measure)
+
+        Note:
+            Always returns success message to prevent email enumeration
+        """
+        email = data["email"]
         user = User.query.filter_by(email=email).first()
         if not user:
-            return {"message": "If the email exists, a reset link has been sent."}, 200
+            return {"message": "If the email exists, a reset link has been sent."}
 
-        # Generate reset token
         token = generate_reset_token(user.email)
-        reset_url = url_for('Auth.PasswordReset', token=token, _external=True)
-        msg = Message('Password Reset Request', recipients=[email])
-        msg.body = f'Please click the link to reset your password: {reset_url}'
-        mail.send(msg)
+        reset_url = url_for("Auth.PasswordReset", token=token, _external=True)
+        try:
+            send_password_reset_email(user, reset_url)
+        except Exception as exc:
+            return {
+                "message": (
+                    f"Password reset email could not be sent {str(exc)}"
+                )
+            }
 
-        return {"message": "If the email exists, a reset link has been sent."}, 200
+        return {"message": "If the email exists, a reset link has been sent."}
 
 
-@auth_bp.route('/password-reset')
+@auth_bp.route("/password-reset")
 class PasswordReset(MethodView):
+    """Endpoint for completing password reset process.
+
+    Methods:
+        POST: Validate reset token and update user password
+    """
     @auth_bp.arguments(PasswordResetSchema)
-    def post(self, data):
-        """Reset the user's password"""
+    def post(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Finalize password reset with token and new password.
+
+        Args:
+            data: Contains reset token and new password
+
+        Returns:
+            Success message upon password update
+
+        Raises:
+            BadRequestError: For invalid/expired reset tokens
+            NotFoundError: If no user exists for the email in valid token
+        """
         try:
-            email = confirm_reset_token(data['token'])
+            email = confirm_reset_token(data["token"])
         except SignatureExpired:
-            return {"message": "The reset link has expired."}, 400
+            raise BadRequestError("The reset link has expired.")
         except BadSignature:
-            return {"message": "Invalid reset token."}, 400
+            raise BadRequestError("Invalid reset token.")
 
-        user = User.query.filter_by(email=email).first_or_404(description="User not found.")
-        new_password = data['new_password']
-        user.set_password(new_password)
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            raise NotFoundError("User not found.")
+
+        user.set_password(data["new_password"])
         db.session.commit()
-        return {"message": "Password has been reset successfully."}, 200
+        return {"message": "Password has been reset successfully."}
 
 
-@auth_bp.route('/logout')
+@auth_bp.route("/logout")
 class UserLogout(MethodView):
+    """Endpoint for JWT token revocation and user logout.
+
+    Methods:
+        POST: Invalidate current JWT token
+    """
     @jwt_required()
-    def post(self):
-        """Logout a user by revoking their current access token"""
+    def post(self) -> Dict[str, Any]:
+        """Revoke current authentication token.
+
+        Returns:
+            Success message upon token revocation
+
+        Raises:
+            InternalServerError: For token revocation storage failures
+
+        Security:
+            Requires valid JWT in Authorization header
+        """
         try:
-            jti = get_jwt()['jti']
+            jti = get_jwt()["jti"]
             revoked_token = RevokedToken(jti=jti)
             db.session.add(revoked_token)
             db.session.commit()
-            return {"message": "Successfully logged out."}, 200
-        except Exception as e:
-            return {"message": "An error occurred during logout."}, 500
+            return {"message": "Successfully logged out."}
+        except Exception as exc:
+            raise InternalServerError(f"An error occurred during logout: {str(exc)}")

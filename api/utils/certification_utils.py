@@ -26,7 +26,7 @@ def generate_certificate_pdf(certificate_details):
     os.makedirs(certificates_dir, exist_ok=True)
 
     # Generate a unique filename based on timestamp and recipient name
-    timestamp = datetime.utcnow().strftime('%Y%m%d%H%M%S')
+    timestamp = datetime.utcnow().strftime('%Y%m%d')
     filename = f"Certificate_{certificate_details['recipient_name'].replace(' ', '_')}_{timestamp}.pdf"
     file_path = os.path.join(certificates_dir, filename)
 
@@ -48,13 +48,11 @@ def generate_certificate_pdf(certificate_details):
 
     # Organization Name
     c.setFont("Helvetica", 14)
-    c.drawCentredString(width / 2, height - 180, f"Organization: {certificate_details['organization_name']}")
+    c.drawCentredString(width / 2, height - 180, f"Organization: {certificate_details['organization_id']}")
 
     # Standard
-    c.drawCentredString(width / 2, height - 210, f"Standard: {certificate_details['standard']}")
+    c.drawCentredString(width / 2, height - 210, f"Standard: {''.join(certificate_details['checklist'])}")
 
-    # Compliance Status
-    c.drawCentredString(width / 2, height - 240, f"Compliance Status: {certificate_details['compliance_status']}")
 
     # Issued Date
     issued_date = datetime.utcnow().strftime('%Y-%m-%d')

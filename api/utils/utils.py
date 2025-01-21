@@ -17,45 +17,42 @@ def send_email(to, subject, template):
     )
     mail.send(msg)
 
+    
 def roles_required(required_roles):
+    if isinstance(required_roles, str):
+        required_roles = [required_roles]
+        
     def decorator(fn):
         @wraps(fn)
         def wrapper(*args, **kwargs):
-
-            inviter_identity = get_jwt_identity()
-            inviter = User.query.get_or_404(inviter_identity)
-            if inviter.role.value not in required_roles:
-                return {'message': 'You are not authorized to access this resource'}, 401
+            verify_jwt_in_request()
+            user_id = get_jwt_identity()
+            user = User.query.get_or_404(user_id)
+            if not any(user.role.value == role for role in required_roles):
+                abort(403, description="Insufficient permissions")
             return fn(*args, **kwargs)
         return wrapper
     return decorator
 
 
-def generate_invitation_token(invitation_id, role):
-    """
-    Generates a signed token containing the invitation_id and role.
-
-    :param invitation_id: The unique identifier of the invitation.
-    :param role: The role to assign upon accepting the invitation.
-    :return: A signed token as a string.
-    """
+def generate_invitation_token(invitation_id):
     serializer = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
+    print("invitation_id", invitation_id)
+    return serializer.dumps(invitation_id,salt='invitation-token')
 
-    token_payload = {'invitation_id': invitation_id, 'role': role.value}
-    return serializer.dumps(token_payload)
 
 
-def verify_invitation_token(token, max_age=7 * 24 * 3600):
-    """
-    Verifies and decodes the invitation token.
-
-    :param token: The signed token to verify.
-    :param max_age: Maximum age of the token in seconds (default: 7 days).
-    :return: A dictionary containing 'invitation_id' and 'role'.
-    :raises: SignatureExpired, BadSignature
-    """
+def verify_invitation_token(token, max_age=604800):
     serializer = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
-    return serializer.loads(token, max_age=max_age)
+    try:
+        invitation_id = serializer.loads(
+            token,
+            salt='invitation-token',
+            max_age=max_age
+        )
+    except Exception:
+        return False
+    return invitation_id
 
 
 def generate_confirmation_token(email):

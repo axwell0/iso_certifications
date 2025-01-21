@@ -1,7 +1,5 @@
-# schemas/certification_schemas.py
+from marshmallow import Schema, fields
 
-from marshmallow import Schema, fields, validate, ValidationError
-from api.models.models  import CertificationStatusEnum
 
 class CertificationSchema(Schema):
     id = fields.String(dump_only=True)
@@ -18,4 +16,3 @@ class CertificationSchema(Schema):
 class CertificationCreateSchema(Schema):
     audit_id = fields.String(required=True)
     issued_date = fields.Date(required=True)
-    certificate_details = fields.Dict(required=True)

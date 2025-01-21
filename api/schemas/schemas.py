@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from marshmallow import Schema, fields, validates, ValidationError, validate
+from marshmallow import Schema, fields, validates, ValidationError, validate, pre_load
 
 from api.models.models import RoleEnum, CertificationBody, Organization, Invitation
 
@@ -68,16 +68,23 @@ class UserSchema(Schema):
 
 
 class UserRegistrationSchema(Schema):
-    email = fields.Email(required=True)
+    email = fields.Email(required=False)
     password = fields.Str(required=True, load_only=True)
     full_name = fields.Str(required=True)
     token = fields.Str(required=False)
 
+    @pre_load
+    def validate_email_or_token(self, data, **kwargs):
+        """
+        Ensure that either `email` is provided (for self-registration) or
+        `invitation_token` is provided (for invitation-based registration).
+        """
+        if not data.get("email") and not data.get("token"):
+            raise ValidationError("Either 'email' or 'token' must be provided.")
+        return data
 
-class RegisterInvitationSchema(Schema):
-    password = fields.Str(required=True, load_only=True)
-    full_name = fields.Str(required=True)
-    token = fields.Str(required=False)
+
+
 class GuestRegistrationSchema(Schema):
     email = fields.Email(required=True)
     password = fields.Str(required=True, load_only=True)

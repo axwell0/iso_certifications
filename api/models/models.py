@@ -44,8 +44,8 @@ class RoleEnum(Enum):
 class User(db.Model):
     __tablename__ = 'users'
 
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    email = db.Column(db.String(120), unique=True, nullable=False)
+    id = db.Column(db.String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    email = db.Column(db.String, unique=True, nullable=False)
     password_hash = db.Column(db.Text, nullable=False)
     full_name = db.Column(db.String(100), nullable=False)
     role = db.Column(db.Enum(RoleEnum), default=RoleEnum.EMPLOYEE, nullable=False)
@@ -55,12 +55,9 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships
     organization = relationship('Organization', back_populates='users')
     certification_body = relationship('CertificationBody', back_populates='users')
-    # Manages the audits
     audits_managed = relationship('Audit', back_populates='manager')
-    # User who issues certifications
     certifications_issued = relationship('Certification', back_populates='issuer')
 
     def set_password(self, password):
@@ -119,17 +116,15 @@ class Certification(db.Model):
     certification_body_id = db.Column(db.String(36), db.ForeignKey('certification_bodies.id'), nullable=False)
     issued_date = db.Column(db.Date, nullable=False)
     status = db.Column(db.Enum(CertificationStatusEnum), nullable=False, default=CertificationStatusEnum.ISSUED)
-    certificate_pdf = db.Column(db.String, nullable=False)  # Path or URL to the PDF
+    certificate_pdf = db.Column(db.String, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     issuer_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)
 
-    # Relationships
     issuer = relationship('User', back_populates='certifications_issued')
     organization = relationship('Organization', back_populates='certifications')
-    # certification_body = relationship('CertificationBody', back_populates='certifications')  # if desired
-    audit = relationship('Audit')  # or add back_populates if it's one-to-one, e.g. back_populates='certification'
+    audit = relationship('Audit')
 
     def __repr__(self):
         return f"<Certification {self.id} for Audit {self.audit_id}>"
@@ -140,17 +135,15 @@ class Audit(db.Model):
 
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = db.Column(db.String(255), nullable=False)
-    organization_id = db.Column(db.String(36), db.ForeignKey('organizations.id'), nullable=False)
-    certification_body_id = db.Column(db.String(36), db.ForeignKey('certification_bodies.id'), nullable=False)
+    organization_id = db.Column(db.String, db.ForeignKey('organizations.id'), nullable=False)
+    certification_body_id = db.Column(db.String, db.ForeignKey('certification_bodies.id'), nullable=False)
     scheduled_date = db.Column(db.Date, nullable=False)
     status = db.Column(db.Enum(AuditStatusEnum), nullable=False, default=AuditStatusEnum.SCHEDULED)
-    checklist = db.Column(db.String, nullable=False)  # JSON string or other serialized data
+    checklist = db.Column(db.String, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    manager_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)
-
-    # Relationships
+    manager_id = db.Column(db.String, db.ForeignKey('users.id'), nullable=False)
     manager = relationship('User', back_populates='audits_managed')
     organization = relationship('Organization', back_populates='audits')
     certification_body = relationship('CertificationBody', back_populates='audits')
@@ -168,7 +161,6 @@ class AuditReport(db.Model):
     report_file = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # Relationships
     audit = relationship('Audit', back_populates='reports')
 
 
@@ -184,7 +176,7 @@ class Invitation(db.Model):
     __tablename__ = 'invitations'
 
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    email = db.Column(db.String(120), nullable=False)
+    email = db.Column(db.String(120),unique=True, nullable=False)
     role = db.Column(db.Enum(RoleEnum), nullable=False)
     organization_id = db.Column(db.String(36), db.ForeignKey('organizations.id'), nullable=True)
     certification_body_id = db.Column(db.String(36), db.ForeignKey('certification_bodies.id'), nullable=True)

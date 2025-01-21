@@ -1,8 +1,7 @@
 from datetime import datetime, timedelta
-from flask import abort, request
+from flask import request
 from flask.views import MethodView
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from flask_mail import Message
 from flask_smorest import Blueprint
 from itsdangerous import SignatureExpired, BadSignature
 from sqlalchemy.exc import SQLAlchemyError
@@ -11,8 +10,12 @@ from api.models.models import (
     User, db, Invitation, RoleEnum, InvitationStatusEnum,
     RequestStatusEnum, CertificationBodyCreationRequest, CertificationBody
 )
-from api.utils.email_utils import send_invitation_email
-from ..extensions import mail
+from ..errors import BadRequestError, NotFoundError, ConflictError, ForbiddenError, InternalServerError
+from api.utils.email_utils import (
+    send_invitation_email, send_revocation_email,
+    send_cert_body_approval_email, send_cert_body_rejection_email,
+    send_cert_invitation_accepted_email
+)
 from ..schemas.schemas import (
     InvitationSchema, MessageSchema, AdminReviewRequestSchema,
     CertificationBodyCreationRequestSchema, AcceptInvitationSchema, InvitationRevokeID
@@ -20,6 +23,7 @@ from ..schemas.schemas import (
 from api.utils.utils import roles_required, generate_invitation_token, verify_invitation_token
 
 certification_body_bp = Blueprint('CertificationBody', 'certificationbody', url_prefix='/certification_body')
+
 
 @certification_body_bp.route('/invite')
 class CertificationBodyInvite(MethodView):
@@ -32,7 +36,7 @@ class CertificationBodyInvite(MethodView):
         inviter = User.query.get(inviter_id)
 
         if not inviter:
-            return {"message": "Inviter not found."}, 404
+            raise NotFoundError("Inviter not found.")
 
         invited_email = invitation_data['email']
         role_str = invitation_data['role']
@@ -40,89 +44,59 @@ class CertificationBodyInvite(MethodView):
         try:
             invited_role = RoleEnum(role_str)
         except ValueError:
-            return {"message": "Invalid role specified."}, 400
+            raise BadRequestError("Invalid role specified.")
 
         guest = User.query.filter_by(email=invited_email).first()
+        invitation_email = Invitation.query.filter_by(email=invited_email).first()
+        if invitation_email and not invitation_email.is_used:
+            raise ConflictError("This email already has an outstanding invitation")
 
         if guest:
             if guest.role != RoleEnum.GUEST:
-                return {"message": "Only guests can be invited to join a certification body as employees."}, 400
+                raise BadRequestError("Only guests can be invited to join a certification body as employees.")
             if guest.certification_body_id:
-                return {"message": "Guest is already part of a certification body."}, 400
+                raise BadRequestError("Guest is already part of a certification body.")
+
             existing_invitation = Invitation.query.filter_by(
                 email=invited_email,
-                organization_id=None,  # Ensure it's not linked to an organization
+                organization_id=None,
                 certification_body_id=inviter.certification_body_id,
                 status=InvitationStatusEnum.PENDING
             ).first()
+
             if existing_invitation:
-                return {"message": "A pending invitation already exists for this guest and certification body."}, 400
+                raise ConflictError("A pending invitation already exists for this guest and certification body.")
 
-            invitation = Invitation(
-                email=invited_email,
-                role=invited_role,
-                organization_id=None,  # Not linked to any organization
-                certification_body_id=inviter.certification_body_id,
-                expires_at=datetime.utcnow() + timedelta(days=7),
-                status=InvitationStatusEnum.PENDING,
-                is_used=False
-            )
-            try:
-                db.session.add(invitation)
-                db.session.commit()
-            except SQLAlchemyError:
-                db.session.rollback()
-                return {"message": "An error occurred while creating the invitation."}, 500
+        invitation = Invitation(
+            email=invited_email,
+            role=invited_role,
+            organization_id=None,
+            certification_body_id=inviter.certification_body_id,
+            expires_at=datetime.utcnow() + timedelta(days=7),
+            status=InvitationStatusEnum.PENDING,
+            is_used=False
+        )
 
-            # Generate signed token with invitation_id and role
-            token = generate_invitation_token(invitation.id, invited_role)
+        try:
+            db.session.add(invitation)
+            db.session.commit()
+        except SQLAlchemyError:
+            db.session.rollback()
+            raise InternalServerError("An error occurred while creating the invitation.")
 
-            # Update the Invitation record with the token
-            invitation.token = token
-            try:
-                db.session.commit()
-            except SQLAlchemyError:
-                db.session.rollback()
-                return {"message": "An error occurred while finalizing the invitation."}, 500
+        token = generate_invitation_token(invitation.id)
+        invitation.token = token
 
-            send_invitation_email(invitation, invitation.certification_body.name,'Certification', is_new_user=False)
+        try:
+            db.session.commit()
+        except SQLAlchemyError:
+            db.session.rollback()
+            raise InternalServerError("An error occurred while finalizing the invitation.")
 
-            return {"message": "Invitation sent successfully to existing guest."}, 201
+        send_invitation_email(invitation, invitation.certification_body.name, 'CertificationBody',
+                              is_new_user=not guest)
+        return {"message": "Invitation sent successfully."}, 201
 
-        else:
-            # Create invitation for a new user to register
-            invitation = Invitation(
-                email=invited_email,
-                role=invited_role,
-                organization_id=None,  # Not linked to any organization
-                certification_body_id=inviter.certification_body_id,
-                expires_at=datetime.utcnow() + timedelta(days=7),
-                status=InvitationStatusEnum.PENDING,
-                is_used=False
-            )
-            try:
-                db.session.add(invitation)
-                db.session.commit()
-            except SQLAlchemyError as e:
-                db.session.rollback()
-                print(e)
-                return {"message": "An error occurred while creating the invitation."}, 500
-
-            # Generate signed token with invitation_id and role
-            token = generate_invitation_token(invitation.id, invited_role)
-
-            # Update the Invitation record with the token
-            invitation.token = token
-            try:
-                db.session.commit()
-            except SQLAlchemyError:
-                db.session.rollback()
-                return {"message": "An error occurred while finalizing the invitation."}, 500
-
-            # Send registration invitation email
-            send_invitation_email(invitation,invitation.certification_body.name,'Certification')
-
-            return {"message": "Invitation sent successfully to register."}, 201
 
 @certification_body_bp.route('/invitations')
 class CertificationBodyInvitations(MethodView):
@@ -132,15 +106,15 @@ class CertificationBodyInvitations(MethodView):
     def get(self):
         """Retrieve all invitations sent by the manager's certification body"""
         inviter_identity = get_jwt_identity()
-        inviter = User.query.get_or_404(inviter_identity)
+        inviter = User.query.get(inviter_identity)
 
+        if not inviter:
+            raise NotFoundError("User not found.")
 
         if inviter.certification_body_id:
-            invitations = Invitation.query.filter_by(certification_body_id=inviter.certification_body_id).all()
-        else:
-            invitations = []
+            return Invitation.query.filter_by(certification_body_id=inviter.certification_body_id).all()
+        return []
 
-        return invitations
 
 @certification_body_bp.route('/requests/view')
 class CertificationBodyRequestsView(MethodView):
@@ -152,6 +126,7 @@ class CertificationBodyRequestsView(MethodView):
         requests = CertificationBodyCreationRequest.query.all()
         return requests, 200
 
+
 @certification_body_bp.route('/requests/create')
 class CertificationBodyRequest(MethodView):
     @certification_body_bp.arguments(CertificationBodyCreationRequestSchema)
@@ -161,13 +136,17 @@ class CertificationBodyRequest(MethodView):
     def post(self, request_data):
         """Submit a request to create a new certification body."""
         identity = get_jwt_identity()
-        guest = User.query.get_or_404(identity)
+        guest = User.query.get(identity)
+        if not guest:
+            raise NotFoundError("User not found.")
+
         existing_request = CertificationBodyCreationRequest.query.filter_by(
             guest_id=guest.id,
             status=RequestStatusEnum.PENDING
         ).first()
+
         if existing_request:
-            return {"message": "You already have a pending certification body creation request."}, 400
+            raise ConflictError("You already have a pending certification body creation request.")
 
         cert_body_request = CertificationBodyCreationRequest(
             guest_id=guest.id,
@@ -182,9 +161,10 @@ class CertificationBodyRequest(MethodView):
             db.session.commit()
         except SQLAlchemyError:
             db.session.rollback()
-            return {"message": "An error occurred while submitting the request."}, 500
+            raise InternalServerError("An error occurred while submitting the request.")
 
         return {"message": "Certification body creation request submitted successfully."}, 201
+
 
 @certification_body_bp.route('/requests/approve')
 class ApproveCertificationBodyRequest(MethodView):
@@ -194,14 +174,16 @@ class ApproveCertificationBodyRequest(MethodView):
     @roles_required('admin')
     def post(self, review_data):
         """Approve a certification body creation request and elevate the guest to manager."""
-        cert_body_request = CertificationBodyCreationRequest.query.get_or_404(
-            review_data['id'],
-            description="Certification body creation request not found."
-        )
-        if cert_body_request.status != RequestStatusEnum.PENDING:
-            abort(400, description="This request has already been processed.")
+        cert_body_request = CertificationBodyCreationRequest.query.get(review_data['id'])
+        if not cert_body_request:
+            raise NotFoundError("Certification body creation request not found.")
 
-        guest = User.query.get_or_404(cert_body_request.guest_id, description="Guest user not found.")
+        if cert_body_request.status != RequestStatusEnum.PENDING:
+            raise BadRequestError("This request has already been processed.")
+
+        guest = User.query.get(cert_body_request.guest_id)
+        if not guest:
+            raise NotFoundError("Guest user not found.")
 
         certification_body = CertificationBody(
             name=cert_body_request.certification_body_name,
@@ -212,7 +194,7 @@ class ApproveCertificationBodyRequest(MethodView):
 
         try:
             db.session.add(certification_body)
-            db.session.flush()  # Flush to get the certification_body.id
+            db.session.flush()
 
             guest.role = RoleEnum.MANAGER
             guest.certification_body_id = certification_body.id
@@ -223,23 +205,11 @@ class ApproveCertificationBodyRequest(MethodView):
             db.session.commit()
         except SQLAlchemyError:
             db.session.rollback()
-            abort(500, description="An error occurred while approving the request.")
+            raise InternalServerError("An error occurred while approving the request.")
 
-        msg = Message(
-            subject='Your Certification Body Creation Request Has Been Approved',
-            recipients=[guest.email]
-        )
-        msg.body = f'''
-        Hello {guest.full_name},
+        send_cert_body_approval_email(guest, certification_body)
+        return {"message": "Certification body creation request approved and guest elevated to manager."}, 200
 
-        Your request to create the certification body '{certification_body.name}' has been approved. You have been elevated to a manager role.
-
-        Best regards,
-        Admin Team
-        '''
-        mail.send(msg)
-
-        return {"message": "Certification body creation request approved and guest elevated to manager.", "obj": certification_body}, 200
 
 @certification_body_bp.route('/requests/reject')
 class RejectCertificationBodyRequest(MethodView):
@@ -249,12 +219,13 @@ class RejectCertificationBodyRequest(MethodView):
     @roles_required('admin')
     def post(self, review_data):
         """Reject a certification body creation request."""
-        cert_body_request = CertificationBodyCreationRequest.query.get_or_404(
-            review_data['id'],
-            description="Certification body creation request not found."
-        )
+        cert_body_request = CertificationBodyCreationRequest.query.get(review_data['id'])
+        if not cert_body_request:
+            raise NotFoundError("Certification body creation request not found.")
+
         if cert_body_request.status != RequestStatusEnum.PENDING:
-            abort(400, description="This request has already been processed.")
+            raise BadRequestError("This request has already been processed.")
+
         cert_body_request.status = RequestStatusEnum.REJECTED
         cert_body_request.admin_comment = review_data.get('admin_comment')
 
@@ -262,28 +233,15 @@ class RejectCertificationBodyRequest(MethodView):
             db.session.commit()
         except SQLAlchemyError:
             db.session.rollback()
-            abort(500, description="An error occurred while rejecting the request.")
+            raise InternalServerError("An error occurred while rejecting the request.")
 
-        guest = User.query.get_or_404(cert_body_request.guest_id, description="Guest user not found.")
-        msg = Message(
-            subject='Your Certification Body Creation Request Has Been Rejected',
-            recipients=[guest.email]
-        )
-        msg.body = f'''
-        Hello {guest.full_name},
+        guest = User.query.get(cert_body_request.guest_id)
+        if not guest:
+            raise NotFoundError("Guest user not found.")
 
-        We regret to inform you that your request to create the certification body '{cert_body_request.certification_body_name}' has been rejected.
-
-        Comments: {cert_body_request.admin_comment}
-
-        If you have any questions, please contact the admin team.
-
-        Best regards,
-        Admin Team
-        '''
-        mail.send(msg)
-
+        send_cert_body_rejection_email(guest, cert_body_request)
         return {"message": "Certification body creation request rejected."}, 200
+
 
 @certification_body_bp.route('/invitations/accept')
 class AcceptInvitation(MethodView):
@@ -296,53 +254,50 @@ class AcceptInvitation(MethodView):
         token = accept_data['token']
 
         try:
-            token_payload = verify_invitation_token(token, max_age=7 * 24 * 3600)  # 7 days
+            token_payload = verify_invitation_token(token, max_age=7 * 24 * 3600)
             invitation_id = token_payload.get('invitation_id')
             token_role_str = token_payload.get('role')
         except SignatureExpired:
-            return {"message": "Invitation token has expired."}, 400
+            raise BadRequestError("Invitation token has expired.")
         except BadSignature:
-            return {"message": "Invalid invitation token."}, 400
+            raise BadRequestError("Invalid invitation token.")
 
         invitation = Invitation.query.filter_by(
             id=invitation_id,
             token=token,
             status=InvitationStatusEnum.PENDING
         ).first()
+
         if not invitation:
-            return {"message": "Invalid or already responded invitation token."}, 400
+            raise BadRequestError("Invalid or already responded invitation token.")
 
         if invitation.expires_at < datetime.utcnow():
-            return {"message": "Invitation token has expired."}, 400
+            raise BadRequestError("Invitation token has expired.")
 
         guest_id = get_jwt_identity()
         guest = User.query.get(guest_id)
         if not guest:
-            return {"message": "Guest user not found."}, 404
+            raise NotFoundError("Guest user not found.")
 
-        # Ensure the invitation is for the authenticated guest
         if guest.email != invitation.email:
-            return {"message": "You do not have permission to accept this invitation."}, 403
+            raise ForbiddenError("You do not have permission to accept this invitation.")
 
         if guest.role != RoleEnum.GUEST:
-            return {"message": "Only guests can accept invitations."}, 400
+            raise BadRequestError("Only guests can accept invitations.")
         if guest.certification_body_id:
-            return {"message": "Guest is already part of a certification body."}, 400
+            raise BadRequestError("Guest is already part of a certification body.")
 
-        # Ensure the role in the token matches the invitation's role
         if token_role_str != invitation.role.value:
-            return {"message": "Invitation role mismatch."}, 400
+            raise BadRequestError("Invitation role mismatch.")
 
-        # Elevate guest to the role specified in the token
         try:
             new_role = RoleEnum(token_role_str)
         except ValueError:
-            return {"message": "Invalid role specified in the invitation token."}, 400
+            raise BadRequestError("Invalid role specified in the invitation token.")
 
         guest.role = new_role
         guest.certification_body_id = invitation.certification_body_id
 
-        # Update invitation status
         invitation.status = InvitationStatusEnum.ACCEPTED
         invitation.is_used = True
         invitation.responded_at = datetime.utcnow()
@@ -351,93 +306,58 @@ class AcceptInvitation(MethodView):
             db.session.commit()
         except SQLAlchemyError:
             db.session.rollback()
-            return {"message": "An error occurred while accepting the invitation."}, 500
+            raise InternalServerError("An error occurred while accepting the invitation.")
 
-        # Fetch the certification body details
         certification_body = CertificationBody.query.get(invitation.certification_body_id)
-        cert_body_name = certification_body.name if certification_body else "the certification body"
-
-        # Send confirmation email
-        confirmation_subject = 'Invitation Accepted'
-        confirmation_body = f'''
-        Hello {guest.full_name},
-
-        You have successfully joined {cert_body_name} as an {guest.role.value}.
-
-        Best regards,
-        Admin Team
-        '''
-        try:
-            msg = Message(
-                subject=confirmation_subject,
-                recipients=[guest.email],
-                body=confirmation_body
-            )
-            mail.send(msg)
-        except Exception:
-            return {"message": "Failed to send confirmation email."}, 500
-
+        send_cert_invitation_accepted_email(guest, certification_body)
         return {"message": f"Invitation accepted and role updated to {guest.role.value}."}, 200
-
 
     @certification_body_bp.response(200, MessageSchema)
     def get(self):
-        """Accept an invitation to join a certification body via a GET request."""
-        token = request.args.get('token', None)
+        """Accept an invitation via GET request."""
+        token = request.args.get('token')
         if not token:
-            return {"message": "Invitation token is missing from the URL."}, 400
+            raise BadRequestError("Invitation token is missing from the URL.")
 
-        # Validate the token using the schema
         schema = AcceptInvitationSchema()
-        errors = schema.validate({'token': token})
-        if errors:
-            return {"message": "Invalid invitation token.", "errors": errors}, 400
+        if schema.validate({'token': token}):
+            raise BadRequestError("Invalid invitation token.")
 
         try:
-            token_payload = verify_invitation_token(token, max_age=7 * 24 * 3600)  # 7 days
+            token_payload = verify_invitation_token(token, max_age=7 * 24 * 3600)
             invitation_id = token_payload.get('invitation_id')
             token_role_str = token_payload.get('role')
         except SignatureExpired:
-            return {"message": "Invitation token has expired."}, 400
+            raise BadRequestError("Invitation token has expired.")
         except BadSignature:
-            return {"message": "Invalid invitation token."}, 400
+            raise BadRequestError("Invalid invitation token.")
 
         invitation = Invitation.query.filter_by(
             id=invitation_id,
             token=token,
             status=InvitationStatusEnum.PENDING
         ).first()
-        if not invitation:
-            return {"message": "Invalid or already responded invitation token."}, 400
 
-        if invitation.expires_at < datetime.utcnow():
-            return {"message": "Invitation token has expired."}, 400
+        if not invitation or invitation.expires_at < datetime.utcnow():
+            raise BadRequestError("Invalid or expired invitation token.")
 
-        # Find the guest user by email
         guest = User.query.filter_by(email=invitation.email).first()
         if not guest:
-            return {"message": "Guest user not found."}, 404
+            raise NotFoundError("Guest user not found.")
 
-        # Ensure the guest is still a guest and not part of any organization
-        if guest.role != RoleEnum.GUEST:
-            return {"message": "Only guests can accept invitations."}, 400
-        if guest.certification_body_id or guest.organization_id:
-            return {"message": "Guest is already part of a certification body or an organization."}, 400
+        if guest.role != RoleEnum.GUEST or guest.certification_body_id:
+            raise BadRequestError("Invalid guest status for invitation acceptance.")
 
-        # Ensure the role in the token matches the invitation's role
         if token_role_str != invitation.role.value:
-            return {"message": "Invitation role mismatch."}, 400
+            raise BadRequestError("Invitation role mismatch.")
 
-        # Elevate guest to the role specified in the token
         try:
             new_role = RoleEnum(token_role_str)
         except ValueError:
-            return {"message": "Invalid role specified in the invitation token."}, 400
+            raise BadRequestError("Invalid role specified in invitation token.")
 
         guest.role = new_role
         guest.certification_body_id = invitation.certification_body_id
-
-        # Update invitation status
         invitation.status = InvitationStatusEnum.ACCEPTED
         invitation.is_used = True
         invitation.responded_at = datetime.utcnow()
@@ -446,60 +366,35 @@ class AcceptInvitation(MethodView):
             db.session.commit()
         except SQLAlchemyError:
             db.session.rollback()
-            return {"message": "An error occurred while accepting the invitation."}, 500
+            raise InternalServerError("Error accepting invitation.")
 
-        # Fetch the certification body details
         certification_body = CertificationBody.query.get(invitation.certification_body_id)
-        cert_body_name = certification_body.name if certification_body else "the certification body"
+        send_cert_invitation_accepted_email(guest, certification_body)
+        return {"message": f"Invitation accepted. Role updated to {guest.role.value}."}, 200
 
-        # Send confirmation email
-        confirmation_subject = 'Invitation Accepted'
-        confirmation_body = f'''
-        Hello {guest.full_name},
-
-        You have successfully joined {cert_body_name} as an {guest.role.value}.
-
-        Best regards,
-        Admin Team
-        '''
-        try:
-            msg = Message(
-                subject=confirmation_subject,
-                recipients=[guest.email],
-                body=confirmation_body
-            )
-            mail.send(msg)
-        except Exception:
-            return {"message": "Failed to send confirmation email."}, 500
-
-        # Optionally, render a confirmation page
-        return {"message": f"Invitation accepted and role updated to {guest.role.value}."}, 200
 
 @certification_body_bp.route('/invitations/revoke')
 class RevokeCertificationBodyInvitation(MethodView):
     @certification_body_bp.arguments(InvitationRevokeID)
     @jwt_required()
     @roles_required('manager')
-    def post(self, invitation_req):
+    def delete(self, invitation_req):
         """Revoke an invitation within a certification body"""
-        inviter_identity = get_jwt_identity()
-        inviter = User.query.get_or_404(inviter_identity)
-        invitation_id = invitation_req['id']
+        inviter = User.query.get(get_jwt_identity())
+        if not inviter:
+            raise NotFoundError("User not found.")
 
-        invitation = Invitation.query.get_or_404(invitation_id, description="Invitation not found.")
+        invitation = Invitation.query.get(invitation_req['id'])
+        if not invitation:
+            raise NotFoundError("Invitation not found.")
 
-        # Ensure the invitation belongs to the inviter's certification body
         if inviter.certification_body_id and invitation.certification_body_id != inviter.certification_body_id:
-            return {"message": "Access forbidden: Invitation does not belong to your certification body."}, 403
+            raise ForbiddenError("Unauthorized to revoke this invitation.")
 
         if invitation.is_used:
-            return {"message": "Cannot revoke a used invitation."}, 400
+            raise BadRequestError("Cannot revoke a used invitation.")
 
+        send_revocation_email(invitation, invitation.certification_body.name)
         db.session.delete(invitation)
-        try:
-            db.session.commit()
-        except SQLAlchemyError:
-            db.session.rollback()
-            return {"message": "An error occurred while revoking the invitation."}, 500
-
+        db.session.commit()
         return {"message": "Invitation revoked successfully."}, 200
