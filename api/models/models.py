@@ -130,6 +130,27 @@ class Certification(db.Model):
         return f"<Certification {self.id} for Audit {self.audit_id}>"
 
 
+class AuditRequest(db.Model):
+    """
+    Stores requests made by an Organization manager to a Certification Body,
+    requesting an audit on a scheduled date.
+    """
+    __tablename__ = 'audit_requests'
+
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    organization_id = db.Column(db.String(36), db.ForeignKey('organizations.id'), nullable=False)
+    certification_body_id = db.Column(db.String(36), db.ForeignKey('certification_bodies.id'), nullable=False)
+    requested_by_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)
+    name = db.Column(db.String(255), nullable=False)
+    standard_ids = db.Column(db.String, nullable=False)  # Comma-separated list of standard IDs
+    scheduled_date = db.Column(db.Date, nullable=False)
+    status = db.Column(db.Enum(RequestStatusEnum), nullable=False, default=RequestStatusEnum.PENDING)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    organization = db.relationship('Organization')
+    certification_body = db.relationship('CertificationBody')
+    requested_by = db.relationship('User')
 class Audit(db.Model):
     __tablename__ = 'audits'
 

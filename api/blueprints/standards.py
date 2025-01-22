@@ -5,13 +5,15 @@ from flask import request, current_app
 from flask.views import MethodView
 from flask_jwt_extended import jwt_required
 from flask_smorest import Blueprint, abort
-from pymongo.errors import DuplicateKeyError, PyMongoError
+from pymongo.errors import PyMongoError
 
 from api.models.mongodb_model import MongoDBClient
 from api.schemas.mongodb_schemas import ISOStandardSchema
 from api.utils.utils import roles_required
 
 standards_bp = Blueprint('Standards', 'standards', url_prefix='/standards')
+
+
 @lru_cache(maxsize=None)
 def get_mongo_client():
     return MongoDBClient()
@@ -24,7 +26,7 @@ QUERY_PARAMS = {
     'stage': 'stage',
     'technical_committee': 'technical_committee',
     'edition': 'edition',
-    'ics':'ics'
+    'ics': 'ics'
 }
 
 
@@ -45,8 +47,8 @@ def build_query():
         if value := args.get(param):
             query[field] = value
 
-
     return query
+
 
 @standards_bp.route('/')
 class StandardsList(MethodView):
@@ -59,7 +61,6 @@ class StandardsList(MethodView):
             offset = int(request.args.get('offset', 0))
             limit = int(request.args.get('limit', 50))
 
-
             return mongo.fetch_standards(
                 query=query,
                 skip=offset,
@@ -70,7 +71,6 @@ class StandardsList(MethodView):
             abort(500, message="Database operation failed")
         except ValueError as e:
             abort(400, message=str(e))
-
 
 
 @standards_bp.route('/<string:standard_iso>')

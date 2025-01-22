@@ -10,7 +10,10 @@ from api.models.models import (
     User, db, Invitation, RoleEnum, InvitationStatusEnum,
     RequestStatusEnum, CertificationBodyCreationRequest, CertificationBody
 )
-from ..errors import BadRequestError, NotFoundError, ConflictError, ForbiddenError, InternalServerError
+from ..errors import (
+    BadRequestError, NotFoundError, ConflictError,
+    ForbiddenError, InternalServerError
+)
 from api.utils.email_utils import (
     send_invitation_email, send_revocation_email,
     send_cert_body_approval_email, send_cert_body_rejection_email,
@@ -31,7 +34,15 @@ class CertificationBodyInvite(MethodView):
     @roles_required('manager')
     @certification_body_bp.arguments(InvitationSchema)
     def post(self, invitation_data):
-        """Invite a new user (employee) by a manager or admin within a certification body"""
+        """
+        Invite a new user (employee) by a manager or admin within a certification body.
+
+        Possible errors:
+        - 404: Inviter not found.
+        - 400: Invalid role, guest is not eligible.
+        - 409: Existing pending invitation.
+        - 500: Database operation failed.
+        """
         inviter_id = get_jwt_identity()
         inviter = User.query.get(inviter_id)
 
@@ -104,16 +115,25 @@ class CertificationBodyInvitations(MethodView):
     @roles_required('manager')
     @certification_body_bp.response(200, InvitationSchema(many=True))
     def get(self):
-        """Retrieve all invitations sent by the manager's certification body"""
+        """
+        Retrieve all invitations sent by the manager's certification body.
+
+        Possible errors:
+        - 404: User not found.
+        - 500: Database operation failed.
+        """
         inviter_identity = get_jwt_identity()
         inviter = User.query.get(inviter_identity)
 
         if not inviter:
             raise NotFoundError("User not found.")
 
-        if inviter.certification_body_id:
-            return Invitation.query.filter_by(certification_body_id=inviter.certification_body_id).all()
-        return []
+        try:
+            if inviter.certification_body_id:
+                return Invitation.query.filter_by(certification_body_id=inviter.certification_body_id).all()
+            return []
+        except SQLAlchemyError:
+            raise InternalServerError("Failed to retrieve invitations.")
 
 
 @certification_body_bp.route('/requests/view')
@@ -122,9 +142,17 @@ class CertificationBodyRequestsView(MethodView):
     @jwt_required()
     @roles_required('admin')
     def get(self):
-        """List all certification body creation requests."""
-        requests = CertificationBodyCreationRequest.query.all()
-        return requests, 200
+        """
+        List all certification body creation requests.
+
+        Possible errors:
+        - 500: Database operation failed.
+        """
+        try:
+            requests = CertificationBodyCreationRequest.query.all()
+            return requests, 200
+        except SQLAlchemyError:
+            raise InternalServerError("Failed to fetch requests.")
 
 
 @certification_body_bp.route('/requests/create')
@@ -134,7 +162,14 @@ class CertificationBodyRequest(MethodView):
     @jwt_required()
     @roles_required("guest")
     def post(self, request_data):
-        """Submit a request to create a new certification body."""
+        """
+        Submit a request to create a new certification body.
+
+        Possible errors:
+        - 404: User not found.
+        - 409: Pending request exists.
+        - 500: Database operation failed.
+        """
         identity = get_jwt_identity()
         guest = User.query.get(identity)
         if not guest:
@@ -173,7 +208,14 @@ class ApproveCertificationBodyRequest(MethodView):
     @jwt_required()
     @roles_required('admin')
     def post(self, review_data):
-        """Approve a certification body creation request and elevate the guest to manager."""
+        """
+        Approve a certification body creation request and elevate the guest to manager.
+
+        Possible errors:
+        - 404: Request or guest not found.
+        - 400: Request already processed.
+        - 500: Database operation failed.
+        """
         cert_body_request = CertificationBodyCreationRequest.query.get(review_data['id'])
         if not cert_body_request:
             raise NotFoundError("Certification body creation request not found.")
@@ -218,7 +260,14 @@ class RejectCertificationBodyRequest(MethodView):
     @jwt_required()
     @roles_required('admin')
     def post(self, review_data):
-        """Reject a certification body creation request."""
+        """
+        Reject a certification body creation request.
+
+        Possible errors:
+        - 404: Request not found.
+        - 400: Request already processed.
+        - 500: Database operation failed.
+        """
         cert_body_request = CertificationBodyCreationRequest.query.get(review_data['id'])
         if not cert_body_request:
             raise NotFoundError("Certification body creation request not found.")
@@ -250,7 +299,15 @@ class AcceptInvitation(MethodView):
     @jwt_required()
     @roles_required([RoleEnum.GUEST])
     def post(self, accept_data):
-        """Accept an invitation to join a certification body as an employee."""
+        """
+        Accept an invitation to join a certification body as an employee.
+
+        Possible errors:
+        - 400: Invalid/expired token, role mismatch, invalid guest status.
+        - 403: Email mismatch.
+        - 404: Invitation or guest not found.
+        - 500: Database operation failed.
+        """
         token = accept_data['token']
 
         try:
@@ -314,7 +371,15 @@ class AcceptInvitation(MethodView):
 
     @certification_body_bp.response(200, MessageSchema)
     def get(self):
-        """Accept an invitation via GET request."""
+        """
+        Accept an invitation via GET request.
+
+        Possible errors:
+        - 400: Missing/invalid token, role mismatch, invalid guest status.
+        - 403: Email mismatch.
+        - 404: Invitation or guest not found.
+        - 500: Database operation failed.
+        """
         token = request.args.get('token')
         if not token:
             raise BadRequestError("Invitation token is missing from the URL.")
@@ -379,7 +444,15 @@ class RevokeCertificationBodyInvitation(MethodView):
     @jwt_required()
     @roles_required('manager')
     def delete(self, invitation_req):
-        """Revoke an invitation within a certification body"""
+        """
+        Revoke an invitation within a certification body.
+
+        Possible errors:
+        - 404: User or invitation not found.
+        - 403: Unauthorized revocation.
+        - 400: Invitation already used.
+        - 500: Database operation failed.
+        """
         inviter = User.query.get(get_jwt_identity())
         if not inviter:
             raise NotFoundError("User not found.")
@@ -395,6 +468,11 @@ class RevokeCertificationBodyInvitation(MethodView):
             raise BadRequestError("Cannot revoke a used invitation.")
 
         send_revocation_email(invitation, invitation.certification_body.name)
-        db.session.delete(invitation)
-        db.session.commit()
+        try:
+            db.session.delete(invitation)
+            db.session.commit()
+        except SQLAlchemyError:
+            db.session.rollback()
+            raise InternalServerError("An error occurred while revoking the invitation.")
+
         return {"message": "Invitation revoked successfully."}, 200

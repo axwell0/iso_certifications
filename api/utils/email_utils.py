@@ -1,5 +1,6 @@
-from flask_mail import Message
 from flask import url_for
+from flask_mail import Message
+
 from api.extensions import mail
 
 
@@ -179,6 +180,11 @@ def send_invitation_accepted_email(user, organization):
 
 def send_certification_email(certification):
     subject = 'Your Compliance Certification Issued'
+    download_url = url_for(
+        'Certification.DownloadCertification',
+        certificate_id=certification.id,
+        _external=True
+    )
     organization = certification.organization
     recipients = [user.email for user in organization.users]
     body = f"""
@@ -197,7 +203,7 @@ def send_certification_email(certification):
         </div>
 
         <div style="text-align: center; margin: 25px 0;">
-          <a href="{certification.certificate_pdf}" 
+          <a href="{download_url}" 
              style="background: #27ae60; color: white; padding: 12px 25px; 
                     text-decoration: none; border-radius: 5px; display: inline-block;">
             Download Certification
@@ -413,3 +419,126 @@ def send_invitation_email(invitation, org_name, org_type, is_new_user=True):
 
     msg = Message(subject=subject, recipients=[invitation.email], html=body)
     mail.send(msg)
+
+
+def send_audit_request_notification_to_cb_managers(audit_request, cb_managers):
+    """
+    Sends an email to each certification body manager about a new audit request.
+    Each email contains links or instructions for approving or rejecting.
+    """
+    for manager in cb_managers:
+        approve_url = url_for('Audit.AuditRequestAction', request_id=audit_request.id,
+                              _external=True) + "?decision=approve"
+        reject_url = url_for('Audit.AuditRequestAction', request_id=audit_request.id,
+                             _external=True) + "?decision=reject"
+
+        subject = f"Audit Request Pending: {audit_request.name}"
+        body = f"""
+                   <html>
+                     <body style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+                       <p style="font-size: 16px; color: #333;">
+                         Hello <strong>{manager.full_name}</strong>,
+                       </p>
+    
+                       <div style="background: #f8f9fa; padding: 20px; border-radius: 8px;">
+                         <p style="margin: 0 0 15px 0;">
+                           The organization <strong style="color: #2c3e50;">{audit_request.organization.name}</strong> 
+                           has requested an audit:
+                         </p>
+                         <ul style="margin: 0 0 15px 0; padding-left: 18px; color: #555;">
+                           <li><strong>Audit Name:</strong> {audit_request.name}</li>
+                           <li><strong>Scheduled Date:</strong> {audit_request.scheduled_date}</li>
+                           <li><strong>Standards:</strong> {audit_request.standard_ids}</li>
+                         </ul>
+                         <p style="margin: 0 0 5px 0;">
+                           Please click on one of the links below to respond:
+                         </p>
+                         <p>
+                           <a href="{approve_url}" style="color: #27ae60; text-decoration: none; font-weight: 
+                           bold;">Approve Request</a> | <a href="{reject_url}" style="color: #c0392b; 
+                           text-decoration: none; font-weight: bold;">Reject Request</a>
+                         </p>
+                       </div>
+    
+                       <p style="margin-top: 25px; color: #666;">
+                         Best regards,<br>
+                         <strong style="color: #2c3e50;">Audit Management System</strong>
+                       </p>
+                     </body>
+                   </html>
+                   """
+        msg = Message(subject=subject, recipients=[manager.email], html=body)
+        mail.send(msg)
+
+
+def send_audit_request_response_to_org_managers(audit_request, org_managers, approved=True):
+    """
+    Notifies the organization managers that their audit request has been approved or rejected.
+    """
+    status_text = "approved" if approved else "rejected"
+
+    for manager in org_managers:
+        subject = f"Your Audit Request Has Been {status_text.title()}"
+        body = f"""
+        <html>
+          <body style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+            <p style="font-size: 16px; color: #333;">
+              Hello <strong>{manager.full_name}</strong>,
+            </p>
+
+            <div style="background: #{'e8f5e9' if approved else 'fff3f3'}; 
+                        padding: 20px; border-radius: 8px;">
+              <p style="margin: 0 0 15px 0;">
+                Your request for an audit 
+                <strong style="color: #2c3e50;">({audit_request.name})</strong> 
+                has been <strong style="color: #{'27ae60' if approved else 'c0392b'};">
+                  {status_text}
+                </strong> by the Certification Body.
+              </p>
+            </div>
+
+            <p style="margin-top: 25px; color: #666;">
+              If you have any questions, please contact your certification body manager.<br><br>
+              Best regards,<br>
+              <strong style="color: #2c3e50;">Audit Management System</strong>
+            </p>
+          </body>
+        </html>
+        """
+        msg = Message(subject=subject, recipients=[manager.email], html=body)
+        mail.send(msg)
+
+
+def send_audit_created_notification(audit, organization_users):
+    """
+    Informs the entire organization that an audit was created.
+    """
+    for user in organization_users:
+        subject = f"Audit Scheduled: {audit.name}"
+        body = f"""
+        <html>
+          <body style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+            <p style="font-size: 16px; color: #333;">Hello <strong>{user.full_name}</strong>,</p>
+
+            <div style="background: #e8f4fc; padding: 20px; border-radius: 8px;">
+              <p style="margin: 0 0 15px 0;">
+                A new audit has been scheduled for your organization 
+                <strong style="color: #2c3e50; font-size: 18px;">({audit.organization.name})</strong>:
+              </p>
+              <p style="margin: 0;">
+                <strong>Audit Title:</strong> {audit.name}<br>
+                <strong>Scheduled Date:</strong> {audit.scheduled_date}<br>
+                <strong>Checklist / Standards:</strong> {audit.checklist}
+              </p>
+            </div>
+
+            <p style="color: #666; margin-top: 25px;">
+              Please prepare accordingly.<br><br>
+              Best regards,<br>
+              <strong style="color: #2c3e50;">Audit Management System</strong>
+            </p>
+          </body>
+        </html>
+        """
+        msg = Message(subject=subject, recipients=[user.email], html=body)
+        mail.send(msg)

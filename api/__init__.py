@@ -1,5 +1,5 @@
 import atexit
-
+from flask_cors import CORS
 from flask import Flask, jsonify
 from flask_jwt_extended import JWTManager
 
@@ -21,6 +21,9 @@ from .seed import create_admin_user
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
+
+
+
     jwt = JWTManager(app)
     db.init_app(app)
     migrate.init_app(app, db)
@@ -28,6 +31,7 @@ def create_app():
     mail.init_app(app)
     blp.init_app(app)
     setup_jwt_callbacks(jwt)
+
     with app.app_context():
         db.create_all()
         create_admin_user(app.config['ADMIN_EMAIL'], app.config['ADMIN_FULL_NAME'], app.config['ADMIN_PASSWORD'])
@@ -40,12 +44,11 @@ def create_app():
     app.register_blueprint(audit_bp)
 
 
-
     def cleanup_database():
         with app.app_context():
             db.drop_all()
             print("All database tables have been dropped.")
 
-    #atexit.register(cleanup_database)
+    # atexit.register(cleanup_database)
 
     return app
