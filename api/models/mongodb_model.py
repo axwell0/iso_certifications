@@ -75,6 +75,11 @@ class MongoDBClient:
         ))
 
     @_handle_errors
+    def count_standards(self, query=None):
+        """Count documents matching the query"""
+        query = query or {}
+        return self.standards.count_documents(query)
+    @_handle_errors
     def insert_standard(self, standard_data):
         """Insert with server-side validation"""
         result = self.standards.insert_one(standard_data)

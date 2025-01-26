@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime
-from typing import Dict, Tuple, Any
+from typing import Dict, Any
 
-from flask import url_for
+from flask import url_for, request, current_app
 from flask.views import MethodView
 from flask_jwt_extended import (
     create_access_token,
@@ -37,7 +37,6 @@ from api.schemas.schemas import (
     PasswordResetSchema,
     MessageSchema
 )
-from ..extensions import db, mail
 from api.utils.utils import (
     generate_confirmation_token,
     confirm_token,
@@ -45,6 +44,7 @@ from api.utils.utils import (
     confirm_reset_token,
     verify_invitation_token
 )
+from ..extensions import db, mail
 from ..utils.email_utils import send_account_confirmation_email, send_password_reset_email
 
 auth_bp = Blueprint("Auth", "auth", url_prefix="/auth", description="Authentication services")
@@ -64,7 +64,7 @@ class UserRegister(MethodView):
 
     @auth_bp.arguments(UserRegistrationSchema)
     @auth_bp.response(201, MessageSchema)
-    def post(self, user_data: Dict[str, Any]) -> Dict[str, Any]:
+    def post(self, user_data: Dict[str, Any]):
         """Register new user account.
 
             Args:
@@ -87,7 +87,6 @@ class UserRegister(MethodView):
         password = user_data["password"]
         full_name = user_data["full_name"]
         invitation_token = user_data.get("token")
-        print('invitation ya zebi',invitation_token)
 
         existing_user = User.query.filter_by(email=email).first()
         if existing_user:
@@ -140,7 +139,6 @@ class UserRegister(MethodView):
                 identity=new_user.id,
                 additional_claims={"email": new_user.email, "role": new_user.role.value}
             )
-            refresh_token = create_refresh_token(identity=new_user.id)
 
             organization = Organization.query.get(invitation.organization_id) if invitation.organization_id else None
             org_name = organization.name if organization else "Your Organization"
@@ -165,14 +163,12 @@ class UserRegister(MethodView):
                     "message": (
                         "Registration successful, but sending the welcome email failed."
                     ),
-                    "access_token": access_token,
-                    "refresh_token": refresh_token
+                    "access_token": access_token
                 }
 
             return {
                 "message": "Registration successful.",
-                "access_token": access_token,
-                "refresh_token": refresh_token
+                "access_token": access_token
             }
 
         user = User(
@@ -191,8 +187,8 @@ class UserRegister(MethodView):
             raise InternalServerError(f"Database error during registration: {str(exc)}")
 
         token = generate_confirmation_token(user.email)
-        confirmation_url = url_for("Auth.ConfirmEmail", token=token, _external=True)
-
+        frontend_url = f"https://127.0.0.1:5000/auth/verify-email/"
+        confirmation_url = f"{frontend_url}?token={token}"
         try:
             send_account_confirmation_email(user, confirmation_url)
         except Exception as exc:
@@ -201,30 +197,37 @@ class UserRegister(MethodView):
                     "Guest registered successfully, but the confirmation email could "
                     f"not be sent: {str(exc)}"
                 )
-            }
+            },400
 
         return {"message": "Guest registered successfully. Please confirm your email."}
 
 
-@auth_bp.route("/confirm/<token>")
+@auth_bp.route("/verify-email/")
 class ConfirmEmail(MethodView):
     """Endpoint for email address confirmation through validation tokens.
 
     Methods:
-        GET: Validate confirmation token and activate user account
+        GET: Validate confirmation token from query parameters and activate user account
     """
-    def get(self, token: str) -> Dict[str, Any]:
-        """Confirm user email address using validation token.
-        Args:
+
+    def get(self) -> Dict[str, Any]:
+        """Confirm user email address using validation token from query parameters.
+
+        Query Parameters:
             token: Email confirmation JWT token sent to user's email
 
         Returns:
             Success message or notification if already confirmed
 
         Raises:
-            BadRequestError: For expired or invalid confirmation tokens
+            BadRequestError: For missing, expired, or invalid confirmation tokens
             NotFoundError: If no user exists for the email in the token
         """
+        token = request.args.get('token')
+        print(token)
+        if not token:
+            raise BadRequestError("Missing token parameter in request.")
+
         try:
             email = confirm_token(token)
         except SignatureExpired:
@@ -238,9 +241,14 @@ class ConfirmEmail(MethodView):
 
         if user.is_confirmed:
             return {"message": "Account already confirmed."}
+
         user.is_confirmed = True
+        access_token = create_access_token(
+            identity=user.id,
+            additional_claims={"email": user.email, "role": user.role.value}
+        )
         db.session.commit()
-        return {"message": "Email confirmed successfully."}
+        return {"message": "Email confirmed successfully.", "access_token": access_token}
 
 
 @auth_bp.route("/login")
@@ -279,10 +287,8 @@ class UserLogin(MethodView):
             identity=user.id,
             additional_claims={"email": user.email, "role": user.role.value}
         )
-        refresh_token = create_refresh_token(identity=user.id)
         return {
-            "access_token": access_token,
-            "refresh_token": refresh_token
+            "access_token": access_token
         }
 
 

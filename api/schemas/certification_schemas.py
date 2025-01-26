@@ -9,10 +9,10 @@ class CertificationSchema(Schema):
     issued_date = fields.Date(required=True)
     status = fields.String(required=True)
     certificate_pdf = fields.String(required=True)
-    created_at = fields.DateTime(dump_only=True)
-    updated_at = fields.DateTime(dump_only=True)
+    created_at = fields.DateTime(dump_only=True, format="%d-%m-%Y")
+    updated_at = fields.DateTime(dump_only=True, format="%d-%m-%Y")
     issuer_id = fields.String(required=True)
 
 class CertificationCreateSchema(Schema):
     audit_id = fields.String(required=True)
-    issued_date = fields.Date(required=True)
+    issued_date = fields.String(required=True)

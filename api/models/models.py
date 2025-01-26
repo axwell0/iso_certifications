@@ -37,6 +37,7 @@ class RoleEnum(Enum):
     EMPLOYEE = 'employee'
     MANAGER = 'manager'
     GUEST = 'guest'
+    AUDITOR = 'auditor'
 
 
 # ------------------- Models -------------------
@@ -143,7 +144,7 @@ class AuditRequest(db.Model):
     requested_by_id = db.Column(db.String(36), db.ForeignKey('users.id'), nullable=False)
     name = db.Column(db.String(255), nullable=False)
     standard_ids = db.Column(db.String, nullable=False)  # Comma-separated list of standard IDs
-    scheduled_date = db.Column(db.Date, nullable=False)
+    scheduled_date = db.Column(db.String, nullable=False)
     status = db.Column(db.Enum(RequestStatusEnum), nullable=False, default=RequestStatusEnum.PENDING)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -168,21 +169,11 @@ class Audit(db.Model):
     manager = relationship('User', back_populates='audits_managed')
     organization = relationship('Organization', back_populates='audits')
     certification_body = relationship('CertificationBody', back_populates='audits')
-    reports = relationship('AuditReport', back_populates='audit')
 
     def __repr__(self):
         return f"<Audit {self.name}>"
 
 
-class AuditReport(db.Model):
-    __tablename__ = 'audit_reports'
-
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    audit_id = db.Column(db.String(36), db.ForeignKey('audits.id'), nullable=False)
-    report_file = db.Column(db.String(255), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    audit = relationship('Audit', back_populates='reports')
 
 
 class RevokedToken(db.Model):

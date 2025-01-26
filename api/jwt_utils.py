@@ -32,7 +32,7 @@ def setup_jwt_callbacks(jwt: JWTManager):
         """
         Custom response for invalid tokens.
         """
-        return {"message": "Invalid token.", "error": "invalid_token"}, 422
+        return {"message": "Invalid token.", "error": "invalid_token"}, 401
 
     @jwt.unauthorized_loader
     def missing_token_response(error):

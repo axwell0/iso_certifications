@@ -9,90 +9,15 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from api.models.models import User, db, Invitation, RoleEnum, InvitationStatusEnum, RequestStatusEnum, \
     OrganizationCreationRequest, Organization
-from ..errors import BadRequestError, NotFoundError, ConflictError, ForbiddenError, InternalServerError
+from api.schemas.schemas import MemberSchema, RemoveMemberSchema
 from api.utils.email_utils import send_invitation_email, send_revocation_email, \
     send_organization_approval_email, send_organization_rejection_email, send_invitation_accepted_email
+from api.utils.utils import roles_required, generate_invitation_token, verify_invitation_token
+from ..errors import BadRequestError, NotFoundError, ConflictError, ForbiddenError, InternalServerError
 from ..schemas.schemas import InvitationSchema, MessageSchema, AdminReviewRequestSchema, \
     OrganizationCreationRequestSchema, AcceptInvitationSchema, InvitationRevokeID
-from api.utils.utils import roles_required, generate_invitation_token, verify_invitation_token
 
 organization_bp = Blueprint('Organization', 'organization', url_prefix='/organization')
-
-
-@organization_bp.route('/invite')
-class UserInvite(MethodView):
-    @jwt_required()
-    @roles_required('manager')
-    @organization_bp.arguments(InvitationSchema)
-    def post(self, invitation_data):
-        """Invite a new user (employee) by a manager or admin"""
-        inviter_id = get_jwt_identity()
-        inviter = User.query.get(inviter_id)
-
-        if not inviter:
-            raise NotFoundError("Inviter not found.")
-
-        invited_email = invitation_data['email']
-        role_str = invitation_data['role']
-
-        try:
-            invited_role = RoleEnum(role_str)
-        except ValueError:
-            raise BadRequestError("Invalid role specified.")
-
-        guest = User.query.filter_by(email=invited_email).first()
-        invitation_email = Invitation.query.filter_by(email=invited_email).first()
-        if invitation_email and not invitation_email.is_used:
-            raise ConflictError("This email already has an outstanding invitation")
-
-        if guest:
-            if guest.role != RoleEnum.GUEST:
-                raise BadRequestError("Only guests can be invited to join an organization as employees.")
-            if guest.organization_id:
-                raise BadRequestError("Guest is already part of an organization.")
-
-            existing_invitation = Invitation.query.filter_by(
-                email=invited_email,
-                organization_id=inviter.organization_id,
-                certification_body_id=inviter.certification_body_id,
-                status=InvitationStatusEnum.PENDING
-            ).first()
-
-            if existing_invitation:
-                raise ConflictError("A pending invitation already exists for this guest and organization.")
-
-        invitation = Invitation(
-            email=invited_email,
-            role=invited_role,
-            organization_id=inviter.organization_id,
-            certification_body_id=inviter.certification_body_id,
-            expires_at=datetime.utcnow() + timedelta(days=7),
-            status=InvitationStatusEnum.PENDING,
-            is_used=False
-        )
-
-        try:
-            db.session.add(invitation)
-            db.session.commit()
-        except SQLAlchemyError:
-            db.session.rollback()
-            raise InternalServerError("An error occurred while creating the invitation.")
-
-        token = generate_invitation_token(invitation.id)
-        invitation.token = token
-
-        try:
-            db.session.commit()
-        except SQLAlchemyError:
-            db.session.rollback()
-            raise InternalServerError("An error occurred while finalizing the invitation.")
-
-        if guest:
-            send_invitation_email(invitation, invitation.organization.name, 'Organization', is_new_user=False)
-            return {"message": "Invitation sent successfully to existing guest."}, 201
-        else:
-            send_invitation_email(invitation, invitation.organization.name, 'Organization')
-            return {"message": "Invitation sent successfully to register."}, 201
 
 
 @organization_bp.route('/requests/create')
@@ -137,13 +62,19 @@ class OrganizationRequest(MethodView):
 
 @organization_bp.route('/requests/view')
 class OrganizationRequestsView(MethodView):
-    @organization_bp.response(200, OrganizationCreationRequestSchema(many=True))
+    @organization_bp.response(200, OrganizationCreationRequestSchema(many=True))  # Add many=True
     @jwt_required()
-    @roles_required('admin')
     def get(self):
         """List all organization creation requests."""
-        requests = OrganizationCreationRequest.query.all()
-        return requests, 200
+        user_id = get_jwt_identity()
+        user = User.query.get(user_id)
+
+        if user.role == RoleEnum.ADMIN:
+            requests = OrganizationCreationRequest.query.all()
+            return requests, 200
+        else:
+            request = OrganizationCreationRequest.query.filter_by(guest_id=user_id).first()
+            return [request] if request else []
 
 
 @organization_bp.route('/requests/approve')
@@ -223,6 +154,82 @@ class RejectOrganizationRequest(MethodView):
         return {"message": "Organization creation request rejected."}, 200
 
 
+@organization_bp.route('/invite')
+class UserInvite(MethodView):
+    @jwt_required()
+    @roles_required('manager')
+    @organization_bp.arguments(InvitationSchema)
+    def post(self, invitation_data):
+        """Invite a new user (employee) by a manager or admin"""
+        inviter_id = get_jwt_identity()
+        inviter = User.query.get(inviter_id)
+
+        if not inviter:
+            raise NotFoundError("Inviter not found.")
+
+        invited_email = invitation_data['email']
+        role_str = invitation_data['role']
+
+        try:
+            invited_role = RoleEnum(role_str)
+        except ValueError:
+            raise BadRequestError("Invalid role specified.")
+
+        guest = User.query.filter_by(email=invited_email).first()
+        invitation_email = Invitation.query.filter_by(email=invited_email).first()
+        if invitation_email and not invitation_email.is_used:
+            raise ConflictError("This email already has an outstanding invitation")
+
+        if guest:
+            if guest.role != RoleEnum.GUEST:
+                raise BadRequestError("Only guests can be invited to join an organization as employees.")
+            if guest.organization_id:
+                raise BadRequestError("Guest is already part of an organization.")
+
+            existing_invitation = Invitation.query.filter_by(
+                email=invited_email,
+                organization_id=inviter.organization_id,
+                certification_body_id=inviter.certification_body_id,
+                status=InvitationStatusEnum.PENDING
+            ).first()
+
+            if existing_invitation:
+                raise ConflictError("A pending invitation already exists for this guest and organization.")
+
+        invitation = Invitation(
+            email=invited_email,
+            role=invited_role,
+            organization_id=inviter.organization_id,
+            certification_body_id=inviter.certification_body_id,
+            expires_at=datetime.utcnow() + timedelta(days=7),
+            status=InvitationStatusEnum.PENDING,
+            is_used=False
+        )
+
+        try:
+            db.session.add(invitation)
+            db.session.commit()
+        except SQLAlchemyError:
+            db.session.rollback()
+            raise InternalServerError("An error occurred while creating the invitation.")
+
+        token = generate_invitation_token(invitation.id)
+        invitation.token = token
+
+        try:
+            db.session.commit()
+        except SQLAlchemyError:
+            db.session.rollback()
+            raise InternalServerError("An error occurred while finalizing the invitation.")
+
+        if guest:
+            send_invitation_email(invitation, invitation.organization.name, 'Organization', is_new_user=False)
+            return {"message": "Invitation sent successfully to existing guest."}, 201
+        else:
+            send_invitation_email(invitation, invitation.organization.name, 'Organization')
+            return {"message": "Invitation sent successfully to register."}, 201
+
+
 @organization_bp.route('/invitations')
 class UserInvitations(MethodView):
     @jwt_required()
@@ -242,27 +249,53 @@ class UserInvitations(MethodView):
         return []
 
 
+@organization_bp.route('/invitations/revoke')
+class RevokeInvitation(MethodView):
+    @organization_bp.arguments(InvitationRevokeID)
+    @jwt_required()
+    @roles_required('manager')
+    def delete(self, invitation_req):
+        """Revoke an invitation"""
+        inviter = User.query.get(get_jwt_identity())
+        if not inviter:
+            raise NotFoundError("User not found.")
+
+        invitation = Invitation.query.get(invitation_req['id'])
+        if not invitation:
+            raise NotFoundError("Invitation not found.")
+
+        if (inviter.organization_id and invitation.organization_id != inviter.organization_id) or \
+                (inviter.certification_body_id and invitation.certification_body_id != inviter.certification_body_id):
+            raise ForbiddenError("Unauthorized to revoke this invitation.")
+
+        if invitation.is_used:
+            raise BadRequestError("Cannot revoke used invitation.")
+
+        send_revocation_email(invitation, invitation.organization.name)
+        db.session.delete(invitation)
+        db.session.commit()
+        return {"message": "Invitation revoked successfully."}, 200
+
+
 @organization_bp.route('/invitations/accept')
 class AcceptInvitation(MethodView):
     @organization_bp.arguments(AcceptInvitationSchema)
     @organization_bp.response(200, MessageSchema)
     @jwt_required()
-    @roles_required([RoleEnum.GUEST])
     def post(self, accept_data):
         """Accept an invitation to join an organization as an employee."""
         token = accept_data['token']
 
         try:
             token_payload = verify_invitation_token(token, max_age=7 * 24 * 3600)
-            invitation_id = token_payload.get('invitation_id')
-            token_role_str = token_payload.get('role')
+
         except SignatureExpired:
             raise BadRequestError("Invitation token has expired.")
         except BadSignature:
             raise BadRequestError("Invalid invitation token.")
 
         invitation = Invitation.query.filter_by(
-            id=invitation_id,
+            id=token_payload,
             token=token,
             status=InvitationStatusEnum.PENDING
         ).first()
@@ -286,11 +319,9 @@ class AcceptInvitation(MethodView):
         if guest.organization_id:
             raise BadRequestError("Guest is already part of an organization.")
 
-        if token_role_str != invitation.role.value:
-            raise BadRequestError("Invitation role mismatch.")
 
         try:
-            new_role = RoleEnum(token_role_str)
+            new_role = RoleEnum(invitation.role)
         except ValueError:
             raise BadRequestError("Invalid role specified in the invitation token.")
 
@@ -372,29 +403,58 @@ class AcceptInvitation(MethodView):
         return {"message": f"Invitation accepted. Role updated to {guest.role.value}."}, 200
 
 
-@organization_bp.route('/invitations/revoke')
-class RevokeInvitation(MethodView):
-    @organization_bp.arguments(InvitationRevokeID)
+@organization_bp.route('/members')
+class OrganizationMembers(MethodView):
+    @jwt_required()
+    @roles_required(['manager', 'employee'])
+    @organization_bp.response(200, MemberSchema(many=True))
+    def get(self):
+        """Get list of organization members with their roles"""
+        current_user_id = get_jwt_identity()
+        manager = User.query.get(current_user_id)
+
+        if not manager or not manager.organization_id:
+            raise NotFoundError("Organization not found")
+
+        members = User.query.filter_by(
+            organization_id=manager.organization_id
+        ).all()
+
+        return members
+
+
+@organization_bp.route('/members/remove')
+class OrganizationMemberManagement(MethodView):
     @jwt_required()
     @roles_required('manager')
-    def delete(self, invitation_req):
-        """Revoke an invitation"""
-        inviter = User.query.get(get_jwt_identity())
-        if not inviter:
-            raise NotFoundError("User not found.")
+    @organization_bp.arguments(RemoveMemberSchema)
+    @organization_bp.response(200, MessageSchema)
+    def delete(self, removal_data):
+        """Remove a user from the organization (manager only)"""
+        current_user_id = get_jwt_identity()
+        user_id_to_remove = removal_data['user_id']
 
-        invitation = Invitation.query.get(invitation_req['id'])
-        if not invitation:
-            raise NotFoundError("Invitation not found.")
+        manager = User.query.get(current_user_id)
+        user_to_remove = User.query.get(user_id_to_remove)
 
-        if (inviter.organization_id and invitation.organization_id != inviter.organization_id) or \
-                (inviter.certification_body_id and invitation.certification_body_id != inviter.certification_body_id):
-            raise ForbiddenError("Unauthorized to revoke this invitation.")
+        if not user_to_remove:
+            raise NotFoundError("User not found")
 
-        if invitation.is_used:
-            raise BadRequestError("Cannot revoke used invitation.")
+        if not manager or not manager.organization_id:
+            raise NotFoundError("Organization not found")
 
-        send_revocation_email(invitation, invitation.organization.name)
-        db.session.delete(invitation)
-        db.session.commit()
-        return {"message": "Invitation revoked successfully."}, 200
+        if user_to_remove.organization_id != manager.organization_id:
+            raise ForbiddenError("User is not in your organization")
+
+        if user_to_remove.id == manager.id:
+            raise BadRequestError("Cannot remove yourself from organization")
+
+        user_to_remove.organization_id = None
+        user_to_remove.role = RoleEnum.GUEST
+
+        try:
+            db.session.commit()
+            return {"message": "User removed successfully"}
+        except SQLAlchemyError as e:
+            db.session.rollback()
+            raise InternalServerError("Error removing user from organization")

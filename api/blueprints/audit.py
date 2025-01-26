@@ -5,12 +5,10 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from flask_smorest import Blueprint
 from sqlalchemy.exc import SQLAlchemyError
 
-from api.models.models import User, Audit, AuditStatusEnum, AuditRequest, RequestStatusEnum, RoleEnum
-
-from api.utils.email_utils import send_audit_notification, send_audit_request_notification_to_cb_managers, \
+from api.models.models import User, Audit, AuditStatusEnum, AuditRequest, RequestStatusEnum, RoleEnum, db
+from api.utils.email_utils import send_audit_request_notification_to_cb_managers, \
     send_audit_request_response_to_org_managers, send_audit_created_notification
 from api.utils.utils import roles_required
-from ..extensions import db
 from ..schemas.audit_request_schemas import AuditRequestCreateSchema, AuditRequestSchema
 from ..schemas.audit_schemas import AuditSchema, AuditCreateSchema, AuditUpdateSchema
 
@@ -21,7 +19,7 @@ audit_bp = Blueprint('Audit', 'audit', url_prefix='/audits')
 class AuditList(MethodView):
     @audit_bp.response(200, AuditSchema(many=True))
     @jwt_required()
-    @roles_required(['employee', 'manager'])
+    @roles_required(['auditor', 'manager','employee'])
     def get(self):
         """
         Retrieve a list of audits for the user making the request,
@@ -45,7 +43,7 @@ class AuditList(MethodView):
 class AuditDetail(MethodView):
     @audit_bp.response(200, AuditSchema)
     @jwt_required()
-    @roles_required(['admin', 'manager'])
+    @roles_required(['manager'])
     def get(self, audit_id):
         """
         Retrieve details of a specific audit by its ID.
@@ -92,7 +90,7 @@ class AuditRequestList(MethodView):
     @audit_bp.arguments(AuditRequestCreateSchema)
     @audit_bp.response(201, AuditRequestSchema)
     @jwt_required()
-    @roles_required(['manager'])  # manager in an Organization
+    @roles_required(['manager'])
     def post(self, req_data):
         """
         (Organization Manager) Create a new audit request to a certification body.
@@ -101,10 +99,11 @@ class AuditRequestList(MethodView):
         """
         current_user_id = get_jwt_identity()
         org_manager = User.query.get_or_404(current_user_id)
+        print(org_manager)
 
         if not org_manager.organization_id:
             return {"message": "You must be an Organization Manager to request an audit."}, 400
-
+        print(req_data)
         audit_request = AuditRequest(
             id=str(uuid.uuid4()),
             name=req_data['name'],
@@ -118,14 +117,16 @@ class AuditRequestList(MethodView):
         db.session.add(audit_request)
         db.session.commit()
 
+
         cb_managers = User.query.filter_by(
             certification_body_id=req_data['certification_body_id'],
             role=RoleEnum.MANAGER
         ).all()
+        print(cb_managers)
 
         if not cb_managers:
             return {"message": "No managers found for the specified certification body."}, 404
-
+        print('WE HERE')
         send_audit_request_notification_to_cb_managers(audit_request, cb_managers)
 
         return audit_request
@@ -193,35 +194,30 @@ class AuditRequestAction(MethodView):
         approved = (action == 'approve')
         send_audit_request_response_to_org_managers(audit_request, org_managers, approved=approved)
 
-        return audit_request
+        return new_audit
 
 
 @audit_bp.route('/requests/<string:request_id>')
 class AuditRequestDetail(MethodView):
     @audit_bp.response(200, AuditRequestSchema)
     @jwt_required()
-    @roles_required(["manager", "employee"])  # manager or employee in a CB or org
+    @roles_required(["manager", "auditor",'employee'])  # manager or employee in a CB or org
     def get(self, request_id):
         """
         Retrieve details of an AuditRequest.
-        Only relevant for managers in the same org or same CB.
+        Only relevant for employees/managers in the same org or same CB.
         """
         current_user_id = get_jwt_identity()
         user = User.query.get_or_404(current_user_id)
 
         audit_request = AuditRequest.query.get_or_404(request_id)
 
-        # Check permission: user must be manager in either the same org or the same CB
         if (user.organization_id != audit_request.organization_id and
                 user.certification_body_id != audit_request.certification_body_id):
             return {"message": "You do not have permission to view this request."}, 403
 
         return audit_request
 
-
-# -----------------------------------------------------------------------------
-# (Optional) Another direct creation endpoint from CB side
-# -----------------------------------------------------------------------------
 @audit_bp.route('/create-for-organization')
 class CreateAuditForOrganization(MethodView):
     """

@@ -11,8 +11,8 @@ class AuditSchema(Schema):
     scheduled_date = fields.Date(required=True)
     status = fields.String(required=True)
     checklist = fields.String(required=True)
-    created_at = fields.DateTime(dump_only=True)
-    updated_at = fields.DateTime(dump_only=True)
+    created_at = fields.DateTime(dump_only=True, format="%d-%m-%Y")
+    updated_at = fields.DateTime(dump_only=True, format="%d-%m-%Y")
     manager_id = fields.String(required=True)
 
 
@@ -25,4 +25,4 @@ class AuditCreateSchema(Schema):
 
 class AuditUpdateSchema(Schema):
     status = fields.String(validate=validate.OneOf([status.value for status in AuditStatusEnum]))
-    scheduled_date = fields.Date()
+    scheduled_date = fields.String()

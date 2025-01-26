@@ -1,5 +1,3 @@
-# api/errors.py
-
 from flask import jsonify
 
 class BaseAPIException(Exception):

@@ -1,4 +1,4 @@
-from flask import url_for
+from flask import url_for, current_app
 from flask_mail import Message
 
 from api.extensions import mail
@@ -352,7 +352,7 @@ def send_revocation_email(invitation, org_name):
 
 def send_invitation_email(invitation, org_name, org_type, is_new_user=True):
     if is_new_user:
-        registration_link = url_for('Auth.UserRegister', token=invitation.token, _external=True)
+        registration_link = f"https://127.0.0.1:5000/auth/register?token={invitation.token}"
         subject = f'You are Invited to Join {org_name}'
         body = f"""
         <html>
@@ -382,7 +382,7 @@ def send_invitation_email(invitation, org_name, org_type, is_new_user=True):
         </html>
         """
     else:
-        acceptance_link = url_for(f'{org_type}.AcceptInvitation', token=invitation.token, _external=True)
+        acceptance_link = f"https://127.0.0.1:5000/organization/invitations/accept/?token={invitation.token}"
         subject = f'You are Invited to Join {org_name}'
         body = f"""
         <html>

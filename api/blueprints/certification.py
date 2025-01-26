@@ -10,7 +10,7 @@ from api.schemas.certification_schemas import CertificationSchema, Certification
 from api.utils.utils import roles_required
 from api.utils.certification_utils import generate_certificate_pdf
 from api.utils.email_utils import send_certification_email
-from api.errors import BadRequestError, ForbiddenError, NotFoundError  # Added imports
+from api.errors import BadRequestError, ForbiddenError, NotFoundError
 
 certification_bp = Blueprint('Certification', 'certification', url_prefix='/certification')
 
@@ -58,7 +58,6 @@ class CertificationList(MethodView):
             raise NotFoundError(message="Audit not found")
         if audit.status != AuditStatusEnum.COMPLETED:
             raise BadRequestError(message="Audit must be completed before issuing certification.")
-
         certification = Certification(
             audit_id=audit.id,
             organization_id=audit.organization_id,
@@ -70,6 +69,8 @@ class CertificationList(MethodView):
                 {"organization_id": audit.organization_id, "recipient_name": audit.organization.name,
                  "checklist": audit.checklist}),
         )
+        print('WE HERE')
+
         db.session.add(certification)
         db.session.commit()
 
@@ -80,8 +81,6 @@ class CertificationList(MethodView):
 
 @certification_bp.route('/download/<string:certificate_id>')
 class DownloadCertification(MethodView):
-    @jwt_required()
-    @roles_required(['employee', 'manager'])
     def get(self, certificate_id):
         """Download the certification PDF.
 
@@ -89,17 +88,13 @@ class DownloadCertification(MethodView):
             NotFoundError: If the certification does not exist.
             ForbiddenError: If the user lacks access to the certification.
         """
-        user_id = get_jwt_identity()
-        user = User.query.filter_by(id=user_id).first()
+
         certification = Certification.query.get(certificate_id)
         if not certification:
             raise NotFoundError(message="Certification not found")
 
-        if user.certification_body_id != certification.certification_body_id and certification.organization_id != user.organization_id:
-            raise ForbiddenError(message="Unauthorized access")
-
         return send_file(
             certification.certificate_pdf,
             as_attachment=True,
-            download_name=f"Certificate_{certification.organization.name.replace(' ', '_')}_{datetime.utcnow().strftime('%Y%m%d')}.pdf"
+            download_name=f"certificates/Certificate_{certification.organization.name.replace(' ', '_')}_{datetime.utcnow().strftime('%Y%m%d')}.pdf"
         )

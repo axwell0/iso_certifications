@@ -8,7 +8,7 @@ class AuditRequestCreateSchema(Schema):
     """
     name = fields.String(required=True)
     certification_body_id = fields.String(required=True)
-    scheduled_date = fields.Date(required=True)
+    scheduled_date = fields.String(required=True)
     standard_ids = fields.List(fields.String(), required=True)
 
 
@@ -22,7 +22,7 @@ class AuditRequestSchema(Schema):
     certification_body_id = fields.String()
     requested_by_id = fields.String()
     standard_ids = fields.String()
-    scheduled_date = fields.Date()
-    status = fields.String()
-    created_at = fields.DateTime(dump_only=True)
-    updated_at = fields.DateTime(dump_only=True)
+    scheduled_date = fields.String()
+    status = fields.Str()
+    created_at = fields.DateTime(dump_only=True, format="%d-%m-%Y")
+    updated_at = fields.DateTime(dump_only=True, format="%d-%m-%Y")

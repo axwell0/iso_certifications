@@ -21,11 +21,169 @@ from api.utils.email_utils import (
 )
 from ..schemas.schemas import (
     InvitationSchema, MessageSchema, AdminReviewRequestSchema,
-    CertificationBodyCreationRequestSchema, AcceptInvitationSchema, InvitationRevokeID
+    CertificationBodyCreationRequestSchema, AcceptInvitationSchema, InvitationRevokeID, RemoveMemberSchema, MemberSchema
 )
 from api.utils.utils import roles_required, generate_invitation_token, verify_invitation_token
 
 certification_body_bp = Blueprint('CertificationBody', 'certificationbody', url_prefix='/certification_body')
+
+
+@certification_body_bp.route('/requests/create')
+class CertificationBodyRequest(MethodView):
+    @certification_body_bp.arguments(CertificationBodyCreationRequestSchema)
+    @certification_body_bp.response(201, MessageSchema)
+    @jwt_required()
+    @roles_required("guest")
+    def post(self, request_data):
+        """
+        Submit a request to create a new certification body.
+
+        Possible errors:
+        - 404: User not found.
+        - 409: Pending request exists.
+        - 500: Database operation failed.
+        """
+        identity = get_jwt_identity()
+        guest = User.query.get(identity)
+        if not guest:
+            raise NotFoundError("User not found.")
+
+        existing_request = CertificationBodyCreationRequest.query.filter_by(
+            guest_id=guest.id,
+            status=RequestStatusEnum.PENDING
+        ).first()
+
+        if existing_request:
+            raise ConflictError("You already have a pending certification body creation request.")
+
+        cert_body_request = CertificationBodyCreationRequest(
+            guest_id=guest.id,
+            certification_body_name=request_data.get('certification_body_name'),
+            address=request_data.get('address'),
+            contact_phone=request_data.get('contact_phone'),
+            contact_email=request_data.get('contact_email'),
+        )
+
+        try:
+            db.session.add(cert_body_request)
+            db.session.commit()
+        except SQLAlchemyError:
+            db.session.rollback()
+            raise InternalServerError("An error occurred while submitting the request.")
+
+        return {"message": "Certification body creation request submitted successfully."}, 201
+
+
+@certification_body_bp.route('/requests/view')
+class CertificationBodyRequestsView(MethodView):
+    @certification_body_bp.response(200, CertificationBodyCreationRequestSchema(many=True))
+    @jwt_required()
+    def get(self):
+        """
+        List all certification body creation requests.
+
+        Possible errors:
+        - 500: Database operation failed.
+        """
+        user_id = get_jwt_identity()
+        user = User.query.get(user_id)
+        if user.role == RoleEnum.ADMIN:
+            requests = CertificationBodyCreationRequest.query.all()
+            return requests, 200
+        else:
+            request = CertificationBodyCreationRequest.query.filter_by(guest_id=user_id).first()
+            return [request] if request else []
+
+
+@certification_body_bp.route('/requests/approve')
+class ApproveCertificationBodyRequest(MethodView):
+    @certification_body_bp.arguments(AdminReviewRequestSchema, location="json")
+    @certification_body_bp.response(200, MessageSchema)
+    @jwt_required()
+    @roles_required('admin')
+    def post(self, review_data):
+        """
+        Approve a certification body creation request and elevate the guest to manager.
+
+        Possible errors:
+        - 404: Request or guest not found.
+        - 400: Request already processed.
+        - 500: Database operation failed.
+        """
+        cert_body_request = CertificationBodyCreationRequest.query.get(review_data['id'])
+        if not cert_body_request:
+            raise NotFoundError("Certification body creation request not found.")
+
+        if cert_body_request.status != RequestStatusEnum.PENDING:
+            raise BadRequestError("This request has already been processed.")
+
+        guest = User.query.get(cert_body_request.guest_id)
+        if not guest:
+            raise NotFoundError("Guest user not found.")
+
+        certification_body = CertificationBody(
+            name=cert_body_request.certification_body_name,
+            address=cert_body_request.address,
+            contact_email=cert_body_request.contact_email,
+            contact_phone=cert_body_request.contact_phone
+        )
+
+        try:
+            db.session.add(certification_body)
+            db.session.flush()
+
+            guest.role = RoleEnum.MANAGER
+            guest.certification_body_id = certification_body.id
+            guest.is_confirmed = True
+            cert_body_request.status = RequestStatusEnum.APPROVED
+            cert_body_request.admin_comment = review_data.get('admin_comment')
+
+            db.session.commit()
+        except SQLAlchemyError:
+            db.session.rollback()
+            raise InternalServerError("An error occurred while approving the request.")
+
+        send_cert_body_approval_email(guest, certification_body)
+        return {"message": "Certification body creation request approved and guest elevated to manager."}, 200
+
+
+@certification_body_bp.route('/requests/reject')
+class RejectCertificationBodyRequest(MethodView):
+    @certification_body_bp.arguments(AdminReviewRequestSchema, location="json")
+    @certification_body_bp.response(200, MessageSchema)
+    @jwt_required()
+    @roles_required('admin')
+    def post(self, review_data):
+        """
+        Reject a certification body creation request.
+
+        Possible errors:
+        - 404: Request not found.
+        - 400: Request already processed.
+        - 500: Database operation failed.
+        """
+        cert_body_request = CertificationBodyCreationRequest.query.get(review_data['id'])
+        if not cert_body_request:
+            raise NotFoundError("Certification body creation request not found.")
+
+        if cert_body_request.status != RequestStatusEnum.PENDING:
+            raise BadRequestError("This request has already been processed.")
+
+        cert_body_request.status = RequestStatusEnum.REJECTED
+        cert_body_request.admin_comment = review_data.get('admin_comment')
+
+        try:
+            db.session.commit()
+        except SQLAlchemyError:
+            db.session.rollback()
+            raise InternalServerError("An error occurred while rejecting the request.")
+
+        guest = User.query.get(cert_body_request.guest_id)
+        if not guest:
+            raise NotFoundError("Guest user not found.")
+
+        send_cert_body_rejection_email(guest, cert_body_request)
+        return {"message": "Certification body creation request rejected."}, 200
 
 
 @certification_body_bp.route('/invite')
@@ -136,160 +294,62 @@ class CertificationBodyInvitations(MethodView):
             raise InternalServerError("Failed to retrieve invitations.")
 
 
-@certification_body_bp.route('/requests/view')
-class CertificationBodyRequestsView(MethodView):
-    @certification_body_bp.response(200, CertificationBodyCreationRequestSchema(many=True))
+@certification_body_bp.route('/members')
+class CertificationBodyMembers(MethodView):
     @jwt_required()
-    @roles_required('admin')
+    @roles_required(['manager', 'auditor'])
+    @certification_body_bp.response(200, MemberSchema(many=True))
     def get(self):
-        """
-        List all certification body creation requests.
+        """Get list of certification body members with their roles"""
+        current_user_id = get_jwt_identity()
+        manager = User.query.get(current_user_id)
 
-        Possible errors:
-        - 500: Database operation failed.
-        """
-        try:
-            requests = CertificationBodyCreationRequest.query.all()
-            return requests, 200
-        except SQLAlchemyError:
-            raise InternalServerError("Failed to fetch requests.")
+        if not manager or not manager.certification_body_id:
+            raise NotFoundError("Certification body not found")
+
+        members = User.query.filter_by(
+            certification_body_id=manager.certification_body_id
+        ).all()
+
+        return members
 
 
-@certification_body_bp.route('/requests/create')
-class CertificationBodyRequest(MethodView):
-    @certification_body_bp.arguments(CertificationBodyCreationRequestSchema)
-    @certification_body_bp.response(201, MessageSchema)
+@certification_body_bp.route('/members/remove')
+class CertificationBodyMemberManagement(MethodView):
     @jwt_required()
-    @roles_required("guest")
-    def post(self, request_data):
-        """
-        Submit a request to create a new certification body.
-
-        Possible errors:
-        - 404: User not found.
-        - 409: Pending request exists.
-        - 500: Database operation failed.
-        """
-        identity = get_jwt_identity()
-        guest = User.query.get(identity)
-        if not guest:
-            raise NotFoundError("User not found.")
-
-        existing_request = CertificationBodyCreationRequest.query.filter_by(
-            guest_id=guest.id,
-            status=RequestStatusEnum.PENDING
-        ).first()
-
-        if existing_request:
-            raise ConflictError("You already have a pending certification body creation request.")
-
-        cert_body_request = CertificationBodyCreationRequest(
-            guest_id=guest.id,
-            certification_body_name=request_data.get('certification_body_name'),
-            address=request_data.get('address'),
-            contact_phone=request_data.get('contact_phone'),
-            contact_email=request_data.get('contact_email'),
-        )
-
-        try:
-            db.session.add(cert_body_request)
-            db.session.commit()
-        except SQLAlchemyError:
-            db.session.rollback()
-            raise InternalServerError("An error occurred while submitting the request.")
-
-        return {"message": "Certification body creation request submitted successfully."}, 201
-
-
-@certification_body_bp.route('/requests/approve')
-class ApproveCertificationBodyRequest(MethodView):
-    @certification_body_bp.arguments(AdminReviewRequestSchema, location="json")
+    @roles_required('manager')
+    @certification_body_bp.arguments(RemoveMemberSchema)
     @certification_body_bp.response(200, MessageSchema)
-    @jwt_required()
-    @roles_required('admin')
-    def post(self, review_data):
-        """
-        Approve a certification body creation request and elevate the guest to manager.
+    def delete(self, removal_data):
+        """Remove a user from the certification body (manager only)"""
+        current_user_id = get_jwt_identity()
+        user_id_to_remove = removal_data['user_id']
 
-        Possible errors:
-        - 404: Request or guest not found.
-        - 400: Request already processed.
-        - 500: Database operation failed.
-        """
-        cert_body_request = CertificationBodyCreationRequest.query.get(review_data['id'])
-        if not cert_body_request:
-            raise NotFoundError("Certification body creation request not found.")
+        manager = User.query.get(current_user_id)
+        user_to_remove = User.query.get(user_id_to_remove)
 
-        if cert_body_request.status != RequestStatusEnum.PENDING:
-            raise BadRequestError("This request has already been processed.")
+        if not user_to_remove:
+            raise NotFoundError("User not found")
 
-        guest = User.query.get(cert_body_request.guest_id)
-        if not guest:
-            raise NotFoundError("Guest user not found.")
+        if not manager or not manager.certification_body_id:
+            raise NotFoundError("Certification body not found")
 
-        certification_body = CertificationBody(
-            name=cert_body_request.certification_body_name,
-            address=cert_body_request.address,
-            contact_email=cert_body_request.contact_email,
-            contact_phone=cert_body_request.contact_phone
-        )
+        if user_to_remove.certification_body_id != manager.certification_body_id:
+            raise ForbiddenError("User is not in your certification body")
 
-        try:
-            db.session.add(certification_body)
-            db.session.flush()
+        if user_to_remove.id == manager.id:
+            raise BadRequestError("Cannot remove yourself from certification body")
 
-            guest.role = RoleEnum.MANAGER
-            guest.certification_body_id = certification_body.id
-            guest.is_confirmed = True
-            cert_body_request.status = RequestStatusEnum.APPROVED
-            cert_body_request.admin_comment = review_data.get('admin_comment')
-
-            db.session.commit()
-        except SQLAlchemyError:
-            db.session.rollback()
-            raise InternalServerError("An error occurred while approving the request.")
-
-        send_cert_body_approval_email(guest, certification_body)
-        return {"message": "Certification body creation request approved and guest elevated to manager."}, 200
-
-
-@certification_body_bp.route('/requests/reject')
-class RejectCertificationBodyRequest(MethodView):
-    @certification_body_bp.arguments(AdminReviewRequestSchema, location="json")
-    @certification_body_bp.response(200, MessageSchema)
-    @jwt_required()
-    @roles_required('admin')
-    def post(self, review_data):
-        """
-        Reject a certification body creation request.
-
-        Possible errors:
-        - 404: Request not found.
-        - 400: Request already processed.
-        - 500: Database operation failed.
-        """
-        cert_body_request = CertificationBodyCreationRequest.query.get(review_data['id'])
-        if not cert_body_request:
-            raise NotFoundError("Certification body creation request not found.")
-
-        if cert_body_request.status != RequestStatusEnum.PENDING:
-            raise BadRequestError("This request has already been processed.")
-
-        cert_body_request.status = RequestStatusEnum.REJECTED
-        cert_body_request.admin_comment = review_data.get('admin_comment')
+        # Remove user from certification body and demote to guest
+        user_to_remove.certification_body_id = None
+        user_to_remove.role = RoleEnum.GUEST
 
         try:
             db.session.commit()
-        except SQLAlchemyError:
+            return {"message": "User removed successfully"}
+        except SQLAlchemyError as e:
             db.session.rollback()
-            raise InternalServerError("An error occurred while rejecting the request.")
-
-        guest = User.query.get(cert_body_request.guest_id)
-        if not guest:
-            raise NotFoundError("Guest user not found.")
-
-        send_cert_body_rejection_email(guest, cert_body_request)
-        return {"message": "Certification body creation request rejected."}, 200
+            raise InternalServerError("Error removing user from certification body")
 
 
 @certification_body_bp.route('/invitations/accept')
@@ -297,7 +357,6 @@ class AcceptInvitation(MethodView):
     @certification_body_bp.arguments(AcceptInvitationSchema)
     @certification_body_bp.response(200, MessageSchema)
     @jwt_required()
-    @roles_required([RoleEnum.GUEST])
     def post(self, accept_data):
         """
         Accept an invitation to join a certification body as an employee.
@@ -312,15 +371,14 @@ class AcceptInvitation(MethodView):
 
         try:
             token_payload = verify_invitation_token(token, max_age=7 * 24 * 3600)
-            invitation_id = token_payload.get('invitation_id')
-            token_role_str = token_payload.get('role')
+
         except SignatureExpired:
             raise BadRequestError("Invitation token has expired.")
         except BadSignature:
             raise BadRequestError("Invalid invitation token.")
 
         invitation = Invitation.query.filter_by(
-            id=invitation_id,
+            id=token_payload,
             token=token,
             status=InvitationStatusEnum.PENDING
         ).first()
@@ -344,11 +402,8 @@ class AcceptInvitation(MethodView):
         if guest.certification_body_id:
             raise BadRequestError("Guest is already part of a certification body.")
 
-        if token_role_str != invitation.role.value:
-            raise BadRequestError("Invitation role mismatch.")
-
         try:
-            new_role = RoleEnum(token_role_str)
+            new_role = RoleEnum(invitation.role)
         except ValueError:
             raise BadRequestError("Invalid role specified in the invitation token.")
 

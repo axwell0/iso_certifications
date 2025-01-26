@@ -1,4 +1,5 @@
 from functools import lru_cache
+from math import ceil
 
 from bson.errors import InvalidId
 from flask import request, current_app
@@ -40,18 +41,20 @@ def build_query():
     query = {}
 
     if keyword := args.get('keyword'):
-        print(keyword)
+
         query['$text'] = {'$search': keyword}
 
     for param, field in QUERY_PARAMS.items():
         if value := args.get(param):
             query[field] = value
+    query['is_active'] = {'$ne': True}
 
     return query
 
 
 @standards_bp.route('/')
 class StandardsList(MethodView):
+    @jwt_required()
     @standards_bp.response(200, ISOStandardSchema(many=True))
     def get(self):
         """Optimized search with pagination and indexing"""
@@ -61,11 +64,16 @@ class StandardsList(MethodView):
             offset = int(request.args.get('offset', 0))
             limit = int(request.args.get('limit', 50))
 
-            return mongo.fetch_standards(
+            data = mongo.fetch_standards(
                 query=query,
                 skip=offset,
                 limit=limit
             )
+
+            total_entries = mongo.count_standards(query)
+            headers = {'X-Total-Count': str(total_entries)}
+            return data, 200, headers
+
         except PyMongoError as e:
             current_app.logger.error(f"MongoDB error: {str(e)}")
             abort(500, message="Database operation failed")
@@ -75,7 +83,7 @@ class StandardsList(MethodView):
 
 @standards_bp.route('/<string:standard_iso>')
 class StandardDetail(MethodView):
-    @standards_bp.response(204)
+    @standards_bp.response(200)
     @jwt_required()
     @roles_required('admin')
     def delete(self, standard_iso):
@@ -84,7 +92,7 @@ class StandardDetail(MethodView):
         try:
             if not mongo.retire_standard(standard_iso):
                 abort(404, message="ISO standard not found")
-            return {"message": f"{standard_iso} has been retired!"}, 204
+            return {"message": f"{standard_iso} has been retired!"}, 200
         except InvalidId:
             abort(400, message="Invalid standard ID format")
         except PyMongoError as e:

@@ -23,18 +23,18 @@ class Config:
     MAIL_PASSWORD = os.getenv('MAIL_PASSWORD')
     MAIL_USE_TLS = os.getenv('MAIL_USE_TLS', 'True') == 'True'
     MAIL_USE_SSL = os.getenv('MAIL_USE_SSL', 'False') == 'True'
-    MAIL_DEFAULT_SENDER = os.getenv('MAIL_DEFAULT_SENDER', 'noreply@example.com')  # Set default sender
-
+    MAIL_DEFAULT_SENDER = os.getenv('MAIL_DEFAULT_SENDER', 'noreply@example.com')
+    GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+    FRONTEND_URL = os.getenv('FRONTEND_URL')
     API_TITLE = "ISO Certifications API"
     API_VERSION = "v1"
     OPENAPI_VERSION = "3.0.3"
     OPENAPI_URL_PREFIX = "/"
     OPENAPI_SWAGGER_UI_PATH = "/swagger-ui"
     OPENAPI_SWAGGER_UI_URL = "https://cdn.jsdelivr.net/npm/swagger-ui-dist/"
-    # JWT Configuration for token revocation
     JWT_BLACKLIST_ENABLED = True
     JWT_BLACKLIST_TOKEN_CHECKS = ['access', 'refresh']
-    MONGO_URI = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/iso_standards')
+    MONGO_URI = os.getenv('MONGODB_URI')
 
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=24)
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=7)
