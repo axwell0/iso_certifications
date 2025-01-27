@@ -1,4 +1,6 @@
 from flask_cors import CORS
+from flask_smorest import Api
+
 from api import create_app
 
 app = create_app()

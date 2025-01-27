@@ -1,5 +1,6 @@
 import os
 from datetime import timedelta
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -29,12 +30,15 @@ class Config:
     API_TITLE = "ISO Certifications API"
     API_VERSION = "v1"
     OPENAPI_VERSION = "3.0.3"
-    OPENAPI_URL_PREFIX = "/"
     OPENAPI_SWAGGER_UI_PATH = "/swagger-ui"
     OPENAPI_SWAGGER_UI_URL = "https://cdn.jsdelivr.net/npm/swagger-ui-dist/"
+    OPENAPI_URL_PREFIX = "/api-docs"
     JWT_BLACKLIST_ENABLED = True
     JWT_BLACKLIST_TOKEN_CHECKS = ['access', 'refresh']
     MONGO_URI = os.getenv('MONGODB_URI')
+    API_SPEC_OPTIONS = {
+        "file": str(Path(__file__).parent / "openapi.yml")  # Path to your YAML file
+    }
 
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=24)
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=7)

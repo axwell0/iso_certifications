@@ -1,1 +1,5 @@
 *.env
+*.pem
+.venv
+migrations
+.idea

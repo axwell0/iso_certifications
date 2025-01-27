@@ -2,11 +2,15 @@ import atexit
 from flask_cors import CORS
 from flask import Flask, jsonify
 from flask_jwt_extended import JWTManager
+from flask_smorest import Api
 
 from .blueprints import certification_body, certification
+from .blueprints.admin import admin_bp
 from .blueprints.audit import audit_bp
 from .blueprints.certification import certification_bp
+from .blueprints.chat import chat_bp
 from .blueprints.standards import standards_bp
+from .blueprints.user import user_bp
 from .config import Config
 from .errors import register_error_handlers
 from .extensions import db, migrate, mail, blp
@@ -21,8 +25,6 @@ from .seed import create_admin_user
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
-
-
 
     jwt = JWTManager(app)
     db.init_app(app)
@@ -42,7 +44,9 @@ def create_app():
     app.register_blueprint(standards_bp)
     app.register_blueprint(certification_body_bp)
     app.register_blueprint(audit_bp)
-
+    app.register_blueprint(user_bp)
+    app.register_blueprint(admin_bp)
+    app.register_blueprint(chat_bp)
 
     def cleanup_database():
         with app.app_context():

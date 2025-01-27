@@ -1,0 +1,2236 @@
+openapi: 3.0.0
+info:
+  title: ISO Certification Simulation API
+  version: 1.0.0
+  description: API documentation for the ISO Certification Simulation Flask backend.
+
+servers:
+  - url: http://127.0.0.1:5000 # Update with your server URL
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    MessageSchema:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Status message.
+      example:
+        message: "Success message"
+
+    # --- Auth Schemas ---
+    UserRegistrationSchema:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address.
+        password:
+          type: string
+          description: User's password.
+        full_name:
+          type: string
+          description: User's full name.
+        token:
+          type: string
+          nullable: true
+          description: Invitation token (optional for invited users).
+      required:
+        - email
+        - password
+        - full_name
+      example:
+        email: "newuser@example.com"
+        password: "securePassword123"
+        full_name: "John Doe"
+        token: "invitation_token_if_invited"
+
+    UserLoginSchema:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address.
+        password:
+          type: string
+          description: User's password.
+      required:
+        - email
+        - password
+      example:
+        email: "user@example.com"
+        password: "userPassword"
+
+    PasswordResetRequestSchema:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address for password reset request.
+      required:
+        - email
+      example:
+        email: "user@example.com"
+
+    PasswordResetSchema:
+      type: object
+      properties:
+        token:
+          type: string
+          description: Password reset token received via email.
+        new_password:
+          type: string
+          description: New password to set.
+      required:
+        - token
+        - new_password
+      example:
+        token: "reset_token_from_email"
+        new_password: "newSecurePassword"
+
+    UserSchema:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address.
+        full_name:
+          type: string
+          description: User's full name.
+        role:
+          type: string
+          enum: ["admin", "employee", "manager", "guest", "auditor"]
+          description: User's role in the system.
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp of user creation.
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp of last update.
+        organization_id:
+          type: string
+          nullable: true
+          description: ID of the organization the user belongs to (if any).
+        organization_name:
+          type: string
+          nullable: true
+          description: Name of the organization the user belongs to (if any).
+        certification_body_id:
+          type: string
+          nullable: true
+          description: ID of the certification body the user belongs to (if any).
+        certification_body_name:
+          type: string
+          nullable: true
+          description: Name of the certification body the user belongs to (if any).
+      example:
+        email: "user@example.com"
+        full_name: "Existing User"
+        role: "employee"
+        created_at: "2024-01-01T10:00:00Z"
+        updated_at: "2024-01-02T14:30:00Z"
+        organization_id: "org-uuid-123"
+        organization_name: "Organization Name"
+        certification_body_id: null
+        certification_body_name: null
+
+    # --- Admin Schemas ---
+    AdminReviewRequestSchema:
+      type: object
+      properties:
+        id:
+          type: string
+          description: ID of the request to review.
+        admin_comment:
+          type: string
+          nullable: true
+          description: Comment by the admin during review.
+      required:
+        - id
+      example:
+        id: "request-uuid-456"
+        admin_comment: "Approved based on provided documents."
+
+    # --- Organization Schemas ---
+    OrganizationCreationRequestSchema:
+      type: object
+      properties:
+        organization_name:
+          type: string
+          description: Name of the organization to be created.
+        description:
+          type: string
+          nullable: true
+          description: Description of the organization.
+        address:
+          type: string
+          description: Address of the organization.
+        contact_phone:
+          type: string
+          description: Contact phone number of the organization.
+        contact_email:
+          type: string
+          format: email
+          description: Contact email of the organization.
+      required:
+        - organization_name
+        - address
+        - contact_phone
+        - contact_email
+      example:
+        organization_name: "New Organization Inc."
+        description: "A new company requesting certification."
+        address: "123 Main Street, City, Country"
+        contact_phone: "+15551234567"
+        contact_email: "contact@neworg.com"
+
+    InvitationSchema:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: Email address of the user to invite.
+        role:
+          type: string
+          enum: ["admin", "employee", "manager", "auditor"]
+          description: Role to assign to the invited user.
+      required:
+        - email
+        - role
+      example:
+        email: "invitee@example.com"
+        role: "employee"
+
+    AcceptInvitationSchema:
+      type: object
+      properties:
+        token:
+          type: string
+          description: Invitation token received via email.
+      required:
+        - token
+      example:
+        token: "invitation_token_from_email"
+
+    InvitationRevokeID:
+      type: object
+      properties:
+        id:
+          type: string
+          description: ID of the invitation to revoke.
+      required:
+        - id
+      example:
+        id: "invitation-uuid-789"
+
+    MemberSchema:
+      type: object
+      properties:
+        id:
+          type: string
+          description: User ID.
+        full_name:
+          type: string
+          description: User's full name.
+        email:
+          type: string
+          format: email
+          description: User's email.
+        role:
+          type: string
+          enum: ["admin", "employee", "manager", "guest", "auditor"]
+          description: User's role.
+      example:
+        id: "user-uuid-abc"
+        full_name: "Member Name"
+        email: "member@example.com"
+        role: "employee"
+
+    RemoveMemberSchema:
+      type: object
+      properties:
+        user_id:
+          type: string
+          description: ID of the user to remove.
+      required:
+        - user_id
+      example:
+        user_id: "user-uuid-to-remove"
+
+    # --- Certification Body Schemas ---
+    CertificationBodyCreationRequestSchema:
+      type: object
+      properties:
+        certification_body_name:
+          type: string
+          description: Name of the certification body to be created.
+        description:
+          type: string
+          nullable: true
+          description: Description of the certification body.
+        address:
+          type: string
+          description: Address of the certification body.
+        contact_phone:
+          type: string
+          description: Contact phone number of the certification body.
+        contact_email:
+          type: string
+          format: email
+          description: Contact email of the certification body.
+      required:
+        - certification_body_name
+        - address
+        - contact_phone
+        - contact_email
+      example:
+        certification_body_name: "New Certification Body Inc."
+        description: "A new certification body."
+        address: "456 Business Street, City, Country"
+        contact_phone: "+15559876543"
+        contact_email: "info@newcertbody.com"
+
+
+    # --- Audit Schemas ---
+    AuditRequestCreateSchema:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Name of the audit request.
+        certification_body_id:
+          type: string
+          description: ID of the certification body requested for audit.
+        standard_ids:
+          type: array
+          items:
+            type: string
+          description: List of ISO standard IDs for the audit.
+        scheduled_date:
+          type: string
+          format: date
+          description: Scheduled date for the audit.
+      required:
+        - name
+        - certification_body_id
+        - standard_ids
+        - scheduled_date
+      example:
+        name: "Initial ISO 9001 Audit"
+        certification_body_id: "certbody-uuid-123"
+        standard_ids: ["ISO9001", "ISO14001"]
+        scheduled_date: "2024-03-15"
+
+    AuditRequestSchema:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Audit request ID.
+        name:
+          type: string
+          description: Name of the audit request.
+        organization_id:
+          type: string
+          description: ID of the organization requesting the audit.
+        certification_body_id:
+          type: string
+          description: ID of the certification body for the audit.
+        requested_by_id:
+          type: string
+          description: ID of the user who requested the audit.
+        standard_ids:
+          type: string
+          description: Comma-separated list of standard IDs.
+        scheduled_date:
+          type: string
+          format: date
+          description: Scheduled date for the audit.
+        status:
+          type: string
+          enum: ["pending", "approved", "rejected"]
+          description: Status of the audit request.
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp of audit request creation.
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp of last update.
+      example:
+        id: "audit-request-uuid-123"
+        name: "Initial ISO 9001 Audit"
+        organization_id: "org-uuid-123"
+        certification_body_id: "certbody-uuid-123"
+        requested_by_id: "user-uuid-123"
+        standard_ids: "ISO9001, ISO14001"
+        scheduled_date: "2024-03-15"
+        status: "pending"
+        created_at: "2024-02-01T09:00:00Z"
+        updated_at: "2024-02-01T09:00:00Z"
+
+    AuditCreateSchema:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Name of the audit.
+        organization_id:
+          type: string
+          description: ID of the organization for the audit.
+        standard_ids:
+          type: array
+          items:
+            type: string
+          description: List of ISO standard IDs for the audit checklist.
+        scheduled_date:
+          type: string
+          format: date
+          description: Scheduled date for the audit.
+      required:
+        - name
+        - organization_id
+        - standard_ids
+        - scheduled_date
+      example:
+        name: "ISO 9001 Certification Audit"
+        organization_id: "org-uuid-123"
+        standard_ids: ["ISO9001"]
+        scheduled_date: "2024-03-20"
+
+    AuditUpdateSchema:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: ["scheduled", "in_progress", "completed"]
+          description: New status for the audit.
+      example:
+        status: "in_progress"
+
+    AuditSchema:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Audit ID.
+        name:
+          type: string
+          description: Name of the audit.
+        organization_id:
+          type: string
+          description: ID of the organization being audited.
+        certification_body_id:
+          type: string
+          description: ID of the certification body conducting the audit.
+        scheduled_date:
+          type: string
+          format: date
+          description: Scheduled date for the audit.
+        status:
+          type: string
+          enum: ["scheduled", "in_progress", "completed"]
+          description: Status of the audit.
+        checklist:
+          type: string
+          description: Comma-separated list of standard IDs for checklist.
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp of audit creation.
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp of last update.
+        manager_id:
+          type: string
+          description: ID of the manager assigned to the audit.
+      example:
+        id: "audit-uuid-123"
+        name: "ISO 9001 Certification Audit"
+        organization_id: "org-uuid-123"
+        certification_body_id: "certbody-uuid-123"
+        scheduled_date: "2024-03-20"
+        status: "scheduled"
+        checklist: "ISO9001"
+        created_at: "2024-02-15T10:00:00Z"
+        updated_at: "2024-02-15T10:00:00Z"
+        manager_id: "user-uuid-mgr"
+
+
+    # --- Certification Schemas ---
+    CertificationCreateSchema:
+      type: object
+      properties:
+        audit_id:
+          type: string
+          description: ID of the audit for which certification is being issued.
+        issued_date:
+          type: string
+          format: date
+          description: Date of certification issuance.
+      required:
+        - audit_id
+        - issued_date
+      example:
+        audit_id: "audit-uuid-123"
+        issued_date: "2024-03-25"
+
+    CertificationSchema:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Certification ID.
+        audit_id:
+          type: string
+          description: ID of the audit related to the certification.
+        organization_id:
+          type: string
+          description: ID of the organization certified.
+        certification_body_id:
+          type: string
+          description: ID of the certification body issuing the certification.
+        issued_date:
+          type: string
+          format: date
+          description: Date of certification issuance.
+        status:
+          type: string
+          enum: ["issued", "revoked"]
+          description: Status of the certification.
+        certificate_pdf:
+          type: string
+          description: Path to the generated certificate PDF file.
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp of certification creation.
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp of last update.
+        issuer_id:
+          type: string
+          description: ID of the user who issued the certification.
+      example:
+        id: "cert-uuid-123"
+        audit_id: "audit-uuid-123"
+        organization_id: "org-uuid-123"
+        certification_body_id: "certbody-uuid-123"
+        issued_date: "2024-03-25"
+        status: "issued"
+        certificate_pdf: "/path/to/certificate.pdf"
+        created_at: "2024-03-25T10:00:00Z"
+        updated_at: "2024-03-25T10:00:00Z"
+        issuer_id: "user-uuid-issuer"
+
+    # --- Chat Schemas ---
+    ChatRequestSchema:
+      type: object
+      properties:
+        message:
+          type: string
+          description: User's query about ISO certification.
+        iso:
+          type: string
+          nullable: true
+          description: Optional ISO standard reference for context.
+        session_id:
+          type: string
+          nullable: true
+          description: Existing conversation session ID to maintain history.
+      required:
+        - message
+      example:
+        message: "What are the benefits of ISO 9001?"
+        iso: "ISO9001"
+        session_id: "existing-session-id-123"
+
+    ChatResponseSchema:
+      type: object
+      properties:
+        response:
+          type: string
+          description: AI-generated response to the query.
+        session_id:
+          type: string
+          description: Conversation session ID.
+        iso:
+          type: string
+          nullable: true
+          description: Relevant ISO standard if applicable.
+      example:
+        response: "ISO 9001 is a quality management system standard..."
+        session_id: "new-session-id-456"
+        iso: "ISO9001"
+
+    # --- MongoDB Schemas ---
+    ISOStandardSchema:
+      type: object
+      properties:
+        Iso:
+          type: string
+          description: ISO Standard Number
+        Category:
+          type: string
+          description: Category of the ISO Standard
+        SubCategory:
+          type: string
+          description: Sub-category of the ISO Standard
+        description:
+          type: string
+          description: Description of the ISO Standard
+        publication_date:
+          type: string
+          format: date
+          nullable: true
+          description: Publication date of the standard
+        stage:
+          type: string
+          nullable: true
+          description: Stage of the standard
+        technical_committee:
+          type: string
+          nullable: true
+          description: Technical committee responsible for the standard
+        edition:
+          type: string
+          nullable: true
+          description: Edition of the standard
+        ics:
+          type: string
+          nullable: true
+          description: International Classification for Standards code
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: UserRegistrationSchema
+      responses:
+        '201':
+          description: User registered successfully.
+          content:
+            application/json:
+              schema: MessageSchema
+        '409':
+          description: Conflict - User already exists.
+          content:
+            application/json:
+              schema: MessageSchema
+        '400':
+          description: Bad Request - Invalid input or invitation token.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /auth/verify-email/:
+    get:
+      tags: [Auth]
+      summary: Verify user email using token.
+      parameters:
+        - in: query
+          name: token
+          required: true
+          schema:
+            type: string
+          description: Email verification token.
+      responses:
+        '200':
+          description: Email verified successfully.
+          content:
+            application/json:
+              schema: MessageSchema
+        '400':
+          description: Bad Request - Invalid or expired token.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - User not found.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: User login and get JWT token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: UserLoginSchema
+      responses:
+        '200':
+          description: Login successful, returns access token.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                    description: JWT access token.
+        '401':
+          description: Unauthorized - Invalid credentials.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Email not confirmed.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /auth/password-reset-request:
+    post:
+      tags: [Auth]
+      summary: Request password reset.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: PasswordResetRequestSchema
+      responses:
+        '200':
+          description: Password reset request initiated.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /auth/password-reset:
+    post:
+      tags: [Auth]
+      summary: Reset password using token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: PasswordResetSchema
+      responses:
+        '200':
+          description: Password reset successfully.
+          content:
+            application/json:
+              schema: MessageSchema
+        '400':
+          description: Bad Request - Invalid or expired token.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - User not found.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: User logout (revoke JWT).
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Logout successful.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /user/profile:
+    get:
+      tags: [User]
+      summary: Get user profile details.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User profile retrieved successfully.
+          content:
+            application/json:
+              schema: UserSchema
+        '404':
+          description: Not Found - User not found.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /admin/users:
+    get:
+      tags: [Admin]
+      summary: Get a list of all users (Admin only).
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of users retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserSchema'
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Admin role required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /organization/requests/create:
+    post:
+      tags: [Organization]
+      summary: Submit a request to create a new organization (Guest only).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: OrganizationCreationRequestSchema
+      responses:
+        '201':
+          description: Organization creation request submitted successfully.
+          content:
+            application/json:
+              schema: MessageSchema
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Guest role required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - User not found.
+          content:
+            application/json:
+              schema: MessageSchema
+        '409':
+          description: Conflict - Pending request exists.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /organization/requests/view:
+    get:
+      tags: [Organization]
+      summary: View organization creation requests (Admin or Guest).
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Organization creation requests retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrganizationCreationRequestSchema'
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /organization/requests/approve:
+    post:
+      tags: [Organization]
+      summary: Approve an organization creation request (Admin only).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: AdminReviewRequestSchema
+      responses:
+        '200':
+          description: Organization creation request approved.
+          content:
+            application/json:
+              schema: MessageSchema
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Admin role required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - Request or Guest not found.
+          content:
+            application/json:
+              schema: MessageSchema
+        '400':
+          description: Bad Request - Request already processed.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /organization/requests/reject:
+    post:
+      tags: [Organization]
+      summary: Reject an organization creation request (Admin only).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: AdminReviewRequestSchema
+      responses:
+        '200':
+          description: Organization creation request rejected.
+          content:
+            application/json:
+              schema: MessageSchema
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Admin role required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - Request not found.
+          content:
+            application/json:
+              schema: MessageSchema
+        '400':
+          description: Bad Request - Request already processed.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /organization/invite:
+    post:
+      tags: [Organization]
+      summary: Invite a user to join an organization (Manager only).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: InvitationSchema
+      responses:
+        '201':
+          description: Invitation sent successfully.
+          content:
+            application/json:
+              schema: MessageSchema
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Manager role required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - Inviter not found.
+          content:
+            application/json:
+              schema: MessageSchema
+        '400':
+          description: Bad Request - Invalid role, guest not eligible.
+          content:
+            application/json:
+              schema: MessageSchema
+        '409':
+          description: Conflict - Pending invitation exists.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /organization/invitations:
+    get:
+      tags: [Organization]
+      summary: Get all invitations sent by the organization (Manager only).
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Invitations retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InvitationSchema'
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Manager role required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - User not found.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /organization/invitations/revoke:
+    delete:
+      tags: [Organization]
+      summary: Revoke an invitation (Manager only).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: InvitationRevokeID
+      responses:
+        '200':
+          description: Invitation revoked successfully.
+          content:
+            application/json:
+              schema: MessageSchema
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Manager role required, Unauthorized revocation.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - User or invitation not found.
+          content:
+            application/json:
+              schema: MessageSchema
+        '400':
+          description: Bad Request - Invitation already used.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /organization/invitations/accept:
+    post:
+      tags: [Organization]
+      summary: Accept an organization invitation (Guest only - via POST).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: AcceptInvitationSchema
+      responses:
+        '200':
+          description: Invitation accepted successfully.
+          content:
+            application/json:
+              schema: MessageSchema
+        '400':
+          description: Bad Request - Invalid/expired token, role mismatch, invalid guest status.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Email mismatch.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - Invitation or guest not found.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+    get:
+      tags: [Organization]
+      summary: Accept an organization invitation (Guest only - via GET with token in query).
+      parameters:
+        - in: query
+          name: token
+          required: true
+          schema:
+            type: string
+          description: Invitation token.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Invitation accepted successfully.
+          content:
+            application/json:
+              schema: MessageSchema
+        '400':
+          description: Bad Request - Invalid/expired token, role mismatch, invalid guest status.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Email mismatch.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - Invitation or guest not found.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /organization/members:
+    get:
+      tags: [Organization]
+      summary: Get list of organization members (Manager, Employee only).
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Organization members retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MemberSchema'
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Manager or Employee role required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - Organization not found.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /organization/members/remove:
+    delete:
+      tags: [Organization]
+      summary: Remove a member from the organization (Manager only).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: RemoveMemberSchema
+      responses:
+        '200':
+          description: Member removed successfully.
+          content:
+            application/json:
+              schema: MessageSchema
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Manager role required, Unauthorized removal.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - User or organization not found.
+          content:
+            application/json:
+              schema: MessageSchema
+        '400':
+          description: Bad Request - Cannot remove self.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /certification_body/requests/create:
+    post:
+      tags: [CertificationBody]
+      summary: Submit a request to create a new certification body (Guest only).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: CertificationBodyCreationRequestSchema
+      responses:
+        '201':
+          description: Certification body creation request submitted successfully.
+          content:
+            application/json:
+              schema: MessageSchema
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Guest role required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - User not found.
+          content:
+            application/json:
+              schema: MessageSchema
+        '409':
+          description: Conflict - Pending request exists.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /certification_body/requests/view:
+    get:
+      tags: [CertificationBody]
+      summary: View certification body creation requests (Admin or Guest).
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Certification body creation requests retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CertificationBodyCreationRequestSchema'
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /certification_body/requests/approve:
+    post:
+      tags: [CertificationBody]
+      summary: Approve a certification body creation request (Admin only).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: AdminReviewRequestSchema
+      responses:
+        '200':
+          description: Certification body creation request approved.
+          content:
+            application/json:
+              schema: MessageSchema
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Admin role required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - Request or Guest not found.
+          content:
+            application/json:
+              schema: MessageSchema
+        '400':
+          description: Bad Request - Request already processed.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /certification_body/requests/reject:
+    post:
+      tags: [CertificationBody]
+      summary: Reject a certification body creation request (Admin only).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: AdminReviewRequestSchema
+      responses:
+        '200':
+          description: Certification body creation request rejected.
+          content:
+            application/json:
+              schema: MessageSchema
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Admin role required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - Request not found.
+          content:
+            application/json:
+              schema: MessageSchema
+        '400':
+          description: Bad Request - Request already processed.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /certification_body/invite:
+    post:
+      tags: [CertificationBody]
+      summary: Invite a user to join a certification body (Manager only).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: InvitationSchema
+      responses:
+        '201':
+          description: Invitation sent successfully.
+          content:
+            application/json:
+              schema: MessageSchema
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Manager role required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - Inviter not found.
+          content:
+            application/json:
+              schema: MessageSchema
+        '400':
+          description: Bad Request - Invalid role, guest not eligible.
+          content:
+            application/json:
+              schema: MessageSchema
+        '409':
+          description: Conflict - Pending invitation exists.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /certification_body/invitations:
+    get:
+      tags: [CertificationBody]
+      summary: Get all invitations sent by the certification body (Manager only).
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Invitations retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InvitationSchema'
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Manager role required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - User not found.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /certification_body/invitations/revoke:
+    delete:
+      tags: [CertificationBody]
+      summary: Revoke a certification body invitation (Manager only).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: InvitationRevokeID
+      responses:
+        '200':
+          description: Invitation revoked successfully.
+          content:
+            application/json:
+              schema: MessageSchema
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Manager role required, Unauthorized revocation.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - User or invitation not found.
+          content:
+            application/json:
+              schema: MessageSchema
+        '400':
+          description: Bad Request - Invitation already used.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /certification_body/invitations/accept:
+    post:
+      tags: [CertificationBody]
+      summary: Accept a certification body invitation (Guest only - via POST).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: AcceptInvitationSchema
+      responses:
+        '200':
+          description: Invitation accepted successfully.
+          content:
+            application/json:
+              schema: MessageSchema
+        '400':
+          description: Bad Request - Invalid/expired token, role mismatch, invalid guest status.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Email mismatch.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - Invitation or guest not found.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+    get:
+      tags: [CertificationBody]
+      summary: Accept a certification body invitation (Guest only - via GET with token in query).
+      parameters:
+        - in: query
+          name: token
+          required: true
+          schema:
+            type: string
+          description: Invitation token.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Invitation accepted successfully.
+          content:
+            application/json:
+              schema: MessageSchema
+        '400':
+          description: Bad Request - Invalid/expired token, role mismatch, invalid guest status.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Email mismatch.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - Invitation or guest not found.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /certification_body/members:
+    get:
+      tags: [CertificationBody]
+      summary: Get list of certification body members (Manager, Auditor only).
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Certification body members retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MemberSchema'
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Manager or Auditor role required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - Certification body not found.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /certification_body/members/remove:
+    delete:
+      tags: [CertificationBody]
+      summary: Remove a member from the certification body (Manager only).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: RemoveMemberSchema
+      responses:
+        '200':
+          description: Member removed successfully.
+          content:
+            application/json:
+              schema: MessageSchema
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Manager role required, Unauthorized removal.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - User or certification body not found.
+          content:
+            application/json:
+              schema: MessageSchema
+        '400':
+          description: Bad Request - Cannot remove self.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /audits/:
+    get:
+      tags: [Audit]
+      summary: Get a list of audits for the current user's organization or certification body.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Audits retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditSchema'
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Auditor, Manager, or Employee role required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - No certifications found.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /audits/{audit_id}:
+    get:
+      tags: [Audit]
+      summary: Get details of a specific audit (Manager only).
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: audit_id
+          required: true
+          schema:
+            type: string
+          description: ID of the audit to retrieve.
+      responses:
+        '200':
+          description: Audit details retrieved successfully.
+          content:
+            application/json:
+              schema: AuditSchema
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Manager role required, Unauthorized access.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - Audit not found or unauthorized access.
+          content:
+            application/json:
+              schema: MessageSchema
+    put:
+      tags: [Audit]
+      summary: Update details or status of a specific audit (Admin, Manager only).
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: audit_id
+          required: true
+          schema:
+            type: string
+          description: ID of the audit to update.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: AuditUpdateSchema
+      responses:
+        '200':
+          description: Audit updated successfully.
+          content:
+            application/json:
+              schema: AuditSchema
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Admin or Manager role required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - Audit not found.
+          content:
+            application/json:
+              schema: MessageSchema
+        '400':
+          description: Bad Request - Invalid status value.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /audits/requests:
+    post:
+      tags: [Audit]
+      summary: Create a new audit request (Organization Manager only).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: AuditRequestCreateSchema
+      responses:
+        '201':
+          description: Audit request created successfully.
+          content:
+            application/json:
+              schema: AuditRequestSchema
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Manager role required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '400':
+          description: Bad Request - Must be Organization Manager.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - No managers for certification body.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /audits/requests/{request_id}/action:
+    post:
+      tags: [Audit]
+      summary: Approve or reject an audit request (Certification Body Manager only).
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: request_id
+          required: true
+          schema:
+            type: string
+          description: ID of the audit request.
+        - in: query
+          name: decision
+          required: true
+          schema:
+            type: string
+            enum: ["approve", "reject"]
+          description: Action to take on the request (approve or reject).
+      responses:
+        '200':
+          description: Audit request actioned successfully. Returns new Audit object if approved.
+          content:
+            application/json:
+              schema: AuditRequestSchema # Or AuditSchema if approved, needs clarification in code
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Not associated with certification body.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - Audit request not found.
+          content:
+            application/json:
+              schema: MessageSchema
+        '400':
+          description: Bad Request - Missing action param, Invalid action, Request already processed.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /audits/requests/{request_id}:
+    get:
+      tags: [Audit]
+      summary: Get details of an audit request (Manager, Auditor, Employee).
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: request_id
+          required: true
+          schema:
+            type: string
+          description: ID of the audit request to retrieve.
+      responses:
+        '200':
+          description: Audit request details retrieved successfully.
+          content:
+            application/json:
+              schema: AuditRequestSchema
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - No permission to view this request.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - Audit request not found.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /audits/create-for-organization:
+    post:
+      tags: [Audit]
+      summary: Create an audit for an organization (Certification Body Manager only).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: AuditCreateSchema
+      responses:
+        '201':
+          description: Audit created successfully.
+          content:
+            application/json:
+              schema: AuditSchema
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Certification Body Manager role required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '400':
+          description: Bad Request - Only Certification Body managers can create audits.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /certification/certificates:
+    get:
+      tags: [Certification]
+      summary: Get a list of issued certifications (Employee, Manager only).
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Certifications retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CertificationSchema'
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Employee or Manager role required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - No certifications found.
+          content:
+            application/json:
+              schema: MessageSchema
+    post:
+      tags: [Certification]
+      summary: Issue a new certification (Admin, Manager only).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: CertificationCreateSchema
+      responses:
+        '201':
+          description: Certification issued successfully.
+          content:
+            application/json:
+              schema: CertificationSchema
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Admin or Manager role required, Certification Body Manager required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - Audit not found.
+          content:
+            application/json:
+              schema: MessageSchema
+        '400':
+          description: Bad Request - Audit must be completed.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /certification/download/{certificate_id}:
+    get:
+      tags: [Certification]
+      summary: Download a certification PDF.
+      parameters:
+        - in: path
+          name: certificate_id
+          required: true
+          schema:
+            type: string
+          description: ID of the certification to download.
+      responses:
+        '200':
+          description: Certification PDF downloaded successfully.
+          content:
+            application/octet-stream: # Or application/pdf if you set mimetype correctly in send_file
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Not Found - Certification not found.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - No access to certification.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /standards/:
+    get:
+      tags: [Standards]
+      summary: Search and retrieve ISO standards from MongoDB.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: keyword
+          schema:
+            type: string
+          description: Keyword to search for in standard text fields.
+        - in: query
+          name: category
+          schema:
+            type: string
+          description: Filter by standard category.
+        - in: query
+          name: subcategory
+          schema:
+            type: string
+          description: Filter by standard subcategory.
+        - in: query
+          name: publication_date
+          schema:
+            type: string
+            format: date
+          description: Filter by publication date.
+        - in: query
+          name: stage
+          schema:
+            type: string
+          description: Filter by standard stage.
+        - in: query
+          name: technical_committee
+          schema:
+            type: string
+          description: Filter by technical committee.
+        - in: query
+          name: edition
+          schema:
+            type: string
+          description: Filter by edition.
+        - in: query
+          name: ics
+          schema:
+            type: string
+          description: Filter by ICS code.
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            default: 0
+          description: Pagination offset.
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 50
+          description: Pagination limit.
+      responses:
+        '200':
+          description: List of ISO standards retrieved successfully.
+          headers:
+            X-Total-Count:
+              schema:
+                type: integer
+              description: Total number of standards matching the query.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ISOStandardSchema'
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error - Database operation failed.
+          content:
+            application/json:
+              schema: MessageSchema
+        '400':
+          description: Bad Request - Invalid input value.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /standards/{standard_iso}:
+    delete:
+      tags: [Standards]
+      summary: Retire an ISO standard (Admin only).
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: standard_iso
+          required: true
+          schema:
+            type: string
+          description: ISO number of the standard to retire.
+      responses:
+        '200':
+          description: ISO standard retired successfully.
+          content:
+            application/json:
+              schema: MessageSchema
+        '401':
+          description: Unauthorized - Authentication required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '403':
+          description: Forbidden - Admin role required.
+          content:
+            application/json:
+              schema: MessageSchema
+        '404':
+          description: Not Found - ISO standard not found.
+          content:
+            application/json:
+              schema: MessageSchema
+        '400':
+          description: Bad Request - Invalid standard ID format.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error - Database operation failed.
+          content:
+            application/json:
+              schema: MessageSchema
+
+  /chat/:
+    post:
+      tags: [Chat]
+      summary: Get ISO related responses with chat history using Gemini AI.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: ChatRequestSchema
+      responses:
+        '200':
+          description: AI generated response retrieved successfully.
+          content:
+            application/json:
+              schema: ChatResponseSchema
+        '400':
+          description: Bad Request - ISO parameter cannot change within session.
+          content:
+            application/json:
+              schema: MessageSchema
+        '500':
+          description: Internal Server Error - Error processing request.
+          content:
+            application/json:
+              schema: MessageSchema

@@ -7,3 +7,6 @@ db = SQLAlchemy()
 migrate = Migrate()
 mail = Mail()
 blp = Api()
+from flask_smorest import Api
+
+api = Api()

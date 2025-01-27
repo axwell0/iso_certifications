@@ -1,0 +1,1971 @@
+{
+    "info": {
+        "_postman_id": "Cock",
+        "name": "ISO Certification API Tests",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Auth Blueprint",
+            "item": [
+                {
+                    "name": "Auth - Register Guest User - Success",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"newguest@example.com\",\n  \"password\": \"password123\",\n  \"full_name\": \"New Guest User\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/auth/register",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Registers a new guest user. Check response message 'Guest registered successfully. Please confirm your email.' Email confirmation is needed before login."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Auth - Register Guest User - Email Already Exists",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"existingguest@example.com\",\n  \"password\": \"password123\",\n  \"full_name\": \"Existing Guest User\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/auth/register",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Test registration with an email that's already registered. Expect ConflictError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Auth - Register Guest User - Invalid Email Format",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"invalid-email\",\n  \"password\": \"password123\",\n  \"full_name\": \"Invalid Email User\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/auth/register",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Test registration with an invalid email format."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Auth - Register via Invitation - Success",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"inviteduser@example.com\",\n  \"password\": \"password123\",\n  \"full_name\": \"Invited User\",\n  \"token\": \"{{invitationToken}}\"  \n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/auth/register",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Registers a user using a valid invitation token. You'll need to create an invitation first and capture the token."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Auth - Register via Invitation - Invalid Token",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"inviteduser-invalidtoken@example.com\",\n  \"password\": \"password123\",\n  \"full_name\": \"Invited User Invalid Token\",\n  \"token\": \"invalid_token\"  \n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/auth/register",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Test registration with an invalid or expired invitation token. Expect BadRequestError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Auth - Register via Invitation - Email Mismatch",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"differentemail@example.com\",\n  \"password\": \"password123\",\n  \"full_name\": \"Invited User Email Mismatch\",\n  \"token\": \"{{invitationToken}}\"  \n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/auth/register",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Test registration with an email that doesn't match the invitation email."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Auth - Verify Email - Success",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseURL}}/auth/verify-email?token={{emailVerificationToken}}",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                },
+                                {
+                                    "key": "emailVerificationToken",
+                                    "value": "<EMAIL_VERIFICATION_TOKEN>"
+                                }
+                            ]
+                        },
+                        "description": "Verifies a user's email using a valid verification token. You'll need to capture the token from the email sent after guest registration."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Auth - Verify Email - Invalid Token",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseURL}}/auth/verify-email?token=invalid_token",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Test email verification with an invalid or expired token. Expect BadRequestError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Auth - Verify Email - Already Confirmed",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseURL}}/auth/verify-email?token={{emailVerificationToken}}",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                },
+                                {
+                                    "key": "emailVerificationToken",
+                                    "value": "<ALREADY_USED_EMAIL_VERIFICATION_TOKEN>"
+                                }
+                            ]
+                        },
+                        "description": "Verify email for an account that is already confirmed. Should return success message."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Auth - Login - Success",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"existinguser@example.com\",\n  \"password\": \"password123\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/auth/login",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Successful login. Capture `access_token` and `refresh_token` from the response for subsequent tests."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Auth - Login - Invalid Credentials",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"invaliduser@example.com\",\n  \"password\": \"wrongpassword\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/auth/login",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Test login with invalid email or password. Expect UnauthorizedError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Auth - Login - Unconfirmed Email",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"unconfirmeduser@example.com\",\n  \"password\": \"password123\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/auth/login",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Test login for a user whose email is not confirmed. Expect ForbiddenError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Auth - Password Reset Request - Success (Email Exists)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"existinguser@example.com\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/auth/password-reset-request",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Request password reset for an existing user. Check response message 'If the email exists, a reset link has been sent.'"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Auth - Password Reset Request - Success (Email Does Not Exist)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"nonexistent@example.com\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/auth/password-reset-request",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Request password reset for a non-existent email. Should still return success message for security reasons."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Auth - Password Reset - Success",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"token\": \"{{passwordResetToken}}\",\n  \"new_password\": \"newpassword123\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/auth/password-reset",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                },
+                                {
+                                    "key": "passwordResetToken",
+                                    "value": "<PASSWORD_RESET_TOKEN>"
+                                }
+                            ]
+                        },
+                        "description": "Resets password using a valid reset token. You'll need to trigger a password reset request first and capture the token from the email."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Auth - Password Reset - Invalid Token",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"token\": \"invalid_token\",\n  \"new_password\": \"newpassword123\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/auth/password-reset",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Test password reset with an invalid or expired token. Expect BadRequestError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Auth - Logout - Success",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{accessToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseURL}}/auth/logout",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Logs out a user by revoking the JWT token."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Auth - Logout - No Token",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseURL}}/auth/logout",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Test logout without providing a JWT token. Expect UnauthorizedError."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "User Blueprint",
+            "item": [
+                {
+                    "name": "User - Get Profile - Success",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{employeeAccessToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseURL}}/user/profile",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Retrieves the profile of the logged-in user. Verify response body contains user details."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "User - Get Profile - No Token",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseURL}}/user/profile",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Test getting profile without a JWT token. Expect UnauthorizedError."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Admin Blueprint",
+            "item": [
+                {
+                    "name": "Admin - Get All Users - Success (Admin Role)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{adminAccessToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseURL}}/admin/users",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Retrieves a list of all users with their details. Verify response body structure."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Admin - Get All Users - Unauthorized (Non-Admin Role)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{employeeAccessToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseURL}}/admin/users",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Test getting all users with a non-admin role. Expect ForbiddenError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Admin - Get All Users - No Token",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseURL}}/admin/users",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Test getting all users without a JWT token. Expect UnauthorizedError."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Organization Blueprint",
+            "item": [
+                {
+                    "name": "Organization - Create Request - Success (Guest Role)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{guestAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"organization_name\": \"Test Org Name\",\n  \"description\": \"Test Org Description\",\n  \"address\": \"123 Test Address\",\n  \"contact_phone\": \"123-456-7890\",\n  \"contact_email\": \"contact@testorg.com\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/requests/create",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Guest user requests to create a new organization. Check response message 'Organization creation request submitted successfully.'"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Create Request - Unauthorized (Non-Guest Role)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{employeeAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"organization_name\": \"Test Org Name\",\n  \"description\": \"Test Org Description\",\n  \"address\": \"123 Test Address\",\n  \"contact_phone\": \"123-456-7890\",\n  \"contact_email\": \"contact@testorg.com\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/requests/create",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Test creating organization request with a non-guest role. Expect ForbiddenError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Create Request - Pending Request Exists",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{guestAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"organization_name\": \"Test Org Name\",\n  \"description\": \"Test Org Description\",\n  \"address\": \"123 Test Address\",\n  \"contact_phone\": \"123-456-7890\",\n  \"contact_email\": \"contact@testorg.com\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/requests/create",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Test creating a request when a pending request already exists for the guest. Expect ConflictError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - View Requests - Success (Admin Role)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{adminAccessToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseURL}}/organization/requests/view",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Admin views all organization creation requests. Verify response body structure and data."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - View Requests - Success (Guest Role - Own Request)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{guestAccessToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseURL}}/organization/requests/view",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Guest views their own organization creation request. Verify response body structure and data."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - View Requests - Unauthorized (Employee Role)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{employeeAccessToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseURL}}/organization/requests/view",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Employee tries to view organization requests. Expect ForbiddenError or NotFoundError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Approve Request - Success (Admin Role)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{adminAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"id\": \"{{organizationRequestID}}\",\n  \"admin_comment\": \"Approved - Looks good!\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/requests/approve",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                },
+                                {
+                                    "key": "organizationRequestID",
+                                    "value": "<ORGANIZATION_REQUEST_ID>"
+                                }
+                            ]
+                        },
+                        "description": "Admin approves an organization creation request. Check response message 'Organization creation request approved and guest elevated to manager.'"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Approve Request - Unauthorized (Non-Admin Role)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{managerAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"id\": \"{{organizationRequestID}}\",\n  \"admin_comment\": \"Approved - Looks good!\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/requests/approve",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                },
+                                {
+                                    "key": "organizationRequestID",
+                                    "value": "<ORGANIZATION_REQUEST_ID>"
+                                }
+                            ]
+                        },
+                        "description": "Manager tries to approve an organization request. Expect ForbiddenError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Approve Request - Request Not Found",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{adminAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"id\": \"nonexistent-request-id\",\n  \"admin_comment\": \"Comment\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/requests/approve",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Approve a non-existent organization request. Expect NotFoundError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Approve Request - Request Already Processed",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{adminAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"id\": \"{{organizationRequestID}}\",\n  \"admin_comment\": \"Comment\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/requests/approve",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                },
+                                {
+                                    "key": "organizationRequestID",
+                                    "value": "<ALREADY_PROCESSED_ORGANIZATION_REQUEST_ID>"
+                                }
+                            ]
+                        },
+                        "description": "Approve an already processed request. Expect BadRequestError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Reject Request - Success (Admin Role)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{adminAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"id\": \"{{organizationRequestID}}\",\n  \"admin_comment\": \"Rejected - Does not meet criteria.\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/requests/reject",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                },
+                                {
+                                    "key": "organizationRequestID",
+                                    "value": "<ORGANIZATION_REQUEST_ID>"
+                                }
+                            ]
+                        },
+                        "description": "Admin rejects an organization creation request. Check response message 'Organization creation request rejected.'"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Reject Request - Unauthorized (Non-Admin Role)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{managerAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"id\": \"{{organizationRequestID}}\",\n  \"admin_comment\": \"Rejected - Does not meet criteria.\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/requests/reject",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                },
+                                {
+                                    "key": "organizationRequestID",
+                                    "value": "<ORGANIZATION_REQUEST_ID>"
+                                }
+                            ]
+                        },
+                        "description": "Manager tries to reject an organization request. Expect ForbiddenError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Reject Request - Request Not Found",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{adminAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"id\": \"nonexistent-request-id\",\n  \"admin_comment\": \"Comment\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/requests/reject",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Reject a non-existent organization request. Expect NotFoundError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Reject Request - Request Already Processed",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{adminAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"id\": \"{{organizationRequestID}}\",\n  \"admin_comment\": \"Comment\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/requests/reject",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                },
+                                {
+                                    "key": "organizationRequestID",
+                                    "value": "<ALREADY_PROCESSED_ORGANIZATION_REQUEST_ID>"
+                                }
+                            ]
+                        },
+                        "description": "Reject an already processed request. Expect BadRequestError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Invite User - Success (Manager Role)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{managerAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"newemployee@example.com\",\n  \"role\": \"employee\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/invite",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Manager invites a new user to their organization. Check response message 'Invitation sent successfully to register.'"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Invite Existing Guest - Success (Manager Role)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{managerAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"existingguest@example.com\",\n  \"role\": \"employee\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/invite",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Manager invites an existing guest user to their organization. Check response message 'Invitation sent successfully to existing guest.'"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Invite User - Unauthorized (Employee Role)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{employeeAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"newemployee@example.com\",\n  \"role\": \"employee\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/invite",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Employee tries to invite a user. Expect ForbiddenError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Invite User - Invalid Role",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{managerAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"newemployee@example.com\",\n  \"role\": \"invalid_role\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/invite",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Invite user with an invalid role. Expect BadRequestError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Invite User - Existing Invitation",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{managerAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"newemployee@example.com\",\n  \"role\": \"employee\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/invite",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Invite user when a pending invitation already exists for that email. Expect ConflictError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - View Invitations - Success (Manager Role)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{managerAccessToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseURL}}/organization/invitations",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Manager views all invitations sent by their organization. Verify response body structure and data."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - View Invitations - Unauthorized (Employee Role)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{employeeAccessToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseURL}}/organization/invitations",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Employee tries to view organization invitations. Expect ForbiddenError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Accept Invitation - Success (Guest Role, POST)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{guestAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"token\": \"{{invitationToken}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/invitations/accept",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Guest accepts an organization invitation via POST request. Check response message 'Invitation accepted and role updated to employee.'"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Accept Invitation - Success (Guest Role, GET)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{guestAccessToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseURL}}/organization/invitations/accept?token={{invitationToken}}",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Guest accepts an organization invitation via GET request. Check response message 'Invitation accepted. Role updated to employee.'"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Accept Invitation - Invalid Token",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{guestAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"token\": \"invalid_token\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/invitations/accept",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Accept invitation with an invalid or expired token. Expect BadRequestError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Accept Invitation - Unauthorized (Wrong Guest)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{anotherGuestAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"token\": \"{{invitationToken}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/invitations/accept",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "A different guest tries to accept an invitation meant for another guest. Expect ForbiddenError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Accept Invitation - Already in Organization",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{guestAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"token\": \"{{invitationToken}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/invitations/accept",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Guest who is already in an organization tries to accept an invitation. Expect BadRequestError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Revoke Invitation - Success (Manager Role)",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{managerAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"id\": \"{{invitationID}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/invitations/revoke",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Manager revokes a pending invitation. Check response message 'Invitation revoked successfully.'"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Revoke Invitation - Unauthorized (Employee Role)",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{employeeAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"id\": \"{{invitationID}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/invitations/revoke",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Employee tries to revoke an invitation. Expect ForbiddenError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Revoke Invitation - Invitation Not Found",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{managerAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"id\": \"nonexistent-invitation-id\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/invitations/revoke",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Revoke a non-existent invitation. Expect NotFoundError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Revoke Invitation - Invitation Already Used",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{managerAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"id\": \"{{invitationID}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/invitations/revoke",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                },
+                                {
+                                    "key": "invitationID",
+                                    "value": "<ALREADY_USED_INVITATION_ID>"
+                                }
+                            ]
+                        },
+                        "description": "Revoke an already used invitation. Expect BadRequestError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Get Members - Success (Manager Role)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{managerAccessToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseURL}}/organization/members",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Manager gets a list of organization members. Verify response body structure and member details."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Get Members - Success (Employee Role)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{employeeAccessToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseURL}}/organization/members",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Employee gets a list of organization members. Verify response body structure and member details."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Get Members - Unauthorized (Guest Role)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{guestAccessToken}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseURL}}/organization/members",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Guest tries to get organization members. Expect ForbiddenError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Remove Member - Success (Manager Role)",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{managerAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"user_id\": \"{{employeeUserIDToRemove}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/members/remove",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Manager removes an employee from their organization. Check response message 'User removed successfully.'"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Remove Member - Unauthorized (Employee Role)",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{employeeAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"user_id\": \"{{employeeUserIDToRemove}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/members/remove",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Employee tries to remove a member. Expect ForbiddenError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Remove Member - User Not Found",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{managerAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"user_id\": \"nonexistent-user-id\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/members/remove",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Remove a non-existent user. Expect NotFoundError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Remove Member - User Not in Organization",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{managerAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"user_id\": \"{{userNotInOrgID}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/members/remove",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Remove a user who is not in the manager's organization. Expect ForbiddenError."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Organization - Remove Member - Remove Self",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{managerAccessToken}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"user_id\": \"{{managerUserID}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseURL}}/organization/members/remove",
+                            "variable": [
+                                {
+                                    "key": "baseURL",
+                                    "value": "http://127.0.0.1:5000"
+                                }
+                            ]
+                        },
+                        "description": "Manager tries to remove themselves. Expect BadRequestError."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Certification Body Blueprint",
+            "item": []
+        },
+        {
+            "name": "Audit Blueprint",
+            "item": []
+        },
+        {
+            "name": "Certification Blueprint",
+            "item": []
+        },
+        {
+            "name": "Standards Blueprint",
+            "item": []
+        },
+        {
+            "name": "Chat Blueprint",
+            "item": []
+        }
+    ]
+}
